@@ -64,6 +64,9 @@ export default function VerticalTabs() {
   const tabIndex = section === '1' ? 1 : 0;
 
   const handleChange = (event: React.ChangeEvent<{}>, newValue: number) => {
+    if (history.length > 0 && history.location.pathname === `/${newValue}`) {
+      return;
+    }
     history.push(`/${newValue}`);
   };
 

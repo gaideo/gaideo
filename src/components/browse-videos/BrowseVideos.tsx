@@ -39,8 +39,6 @@ export function BrowseVideos() {
                     return true;
                 })
             }
-            else {
-            }
         }
         refresh();
     }, [userSession, history, id]);
