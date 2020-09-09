@@ -1,26 +1,33 @@
-import React from 'react';
-import logo from './logo.svg';
+import React, { Component } from 'react';
+import 'fontsource-roboto';
 import './App.css';
+import { UserSession } from 'blockstack';
+import { appConfig } from './assets/constants';
+import { Connect } from '@blockstack/connect';
+import Main from './components/main/Main';
+import { HashRouter } from 'react-router-dom';
 
-function App() {
-  return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.tsx</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
-  );
+const userSession = new UserSession({ appConfig });
+
+export default class App extends Component {
+
+  render() {
+    const authOptions = {
+      appDetails: {
+        name: "Gaideo",
+        icon: window.location.origin + '/icons/logo.svg',
+      },
+      userSession,
+      finished: ({ userSession }: any) => {
+        this.setState({ userData: userSession.loadUserData() });
+      },
+    };
+    return (
+      <Connect authOptions={authOptions}>
+        <HashRouter>
+          <Main />
+        </HashRouter>
+      </Connect>
+    );
+  }
 }
-
-export default App;
