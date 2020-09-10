@@ -1,13 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { makeStyles, Divider, List, ListItem, ListItemText, AppBar, Toolbar, Drawer, Typography, Hidden, IconButton, Button, Menu, MenuItem } from "@material-ui/core";
-import MenuIcon from '@material-ui/icons/Menu';
+import MenuIcon from '@material-ui/icons/MenuOutlined';
+import PublishIcon from '@material-ui/icons/PublishOutlined';
+import MovieIcon from '@material-ui/icons/MovieOutlined';
+import EncryptIcon from '@material-ui/icons/EnhancedEncryptionOutlined';
+import ContactIcon from '@material-ui/icons/ContactMailOutlined';
 import { useConnect } from '@blockstack/connect';
 import { UserData } from 'blockstack/lib/auth/authApp';
 import AccountCircle from '@material-ui/icons/AccountCircle';
-import { useHistory } from 'react-router-dom';
-import { ContentPane } from '../../content-pane/ContentPane';
+import { useHistory, Route, Switch, Redirect, useRouteMatch } from 'react-router-dom';
 import Loader from 'react-loader-spinner';
 import { usePromiseTracker } from 'react-promise-tracker';
+import { VideoPlayer } from '../video-player/VideoPlayer';
+import { BrowseVideos } from '../browse-videos/BrowseVideos';
+import PublishVideo from '../publish-video/PublishVideo';
+import { VideoEncryption } from '../video-encryption/VideoEncryption';
+import { ContactUs } from '../contact-us/ContactUs';
 
 const drawerWidth = 240;
 const useStyles = makeStyles((theme) => ({
@@ -46,10 +54,43 @@ export default function Main() {
     const { userSession } = authOptions;
     const [userData, setUserData] = useState<UserData | null>(null);
     const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
-    const [selectedNavItem, setSelectedNavItem] = useState('Videos');
     const open = Boolean(anchorEl);
     const history = useHistory();
     const { promiseInProgress } = usePromiseTracker();
+    const publishRoute = useRouteMatch("/publish");
+    const isPublish = window.location.hash.startsWith('#/publish');
+    const isVideos = window.location.hash.startsWith('#/videos') || window.location.hash === '';
+    const isEncrypt = window.location.hash.startsWith('#/encrypt');
+    const isContactUs = window.location.hash.startsWith('#/contactus');
+    const [publishSelected, setPublishSelected] = useState(isPublish);
+    const [videosSelected, setVideosSelected] = useState(isVideos);
+    const [encryptSelected, setEncryptSelected] = useState(isEncrypt);
+    const [contactUsSelected, setContactUsSelected] = useState(isContactUs);
+
+    if (!publishSelected && isPublish) {
+        setPublishSelected(true);
+    }
+    else if (publishSelected && !isPublish) {
+        setPublishSelected(false);
+    }
+    if (!videosSelected && isVideos) {
+        setVideosSelected(true);
+    }
+    else if (videosSelected && !isVideos) {
+        setVideosSelected(false);
+    }
+    if (!encryptSelected && isEncrypt) {
+        setEncryptSelected(true);
+    }
+    else if (encryptSelected && !isEncrypt) {
+        setEncryptSelected(false);
+    }
+    if (!contactUsSelected && isContactUs) {
+        setContactUsSelected(true);
+    }
+    else if (contactUsSelected && !isContactUs) {
+        setContactUsSelected(false);
+    }
 
     useEffect(() => {
 
@@ -60,7 +101,8 @@ export default function Main() {
 
         }
         refresh();
-    }, [userSession, userData]);
+    }, [userSession, userData, publishRoute]);
+
 
     const handleClick = (event: React.MouseEvent<HTMLElement>) => {
         setAnchorEl(event.currentTarget);
@@ -80,6 +122,10 @@ export default function Main() {
 
     const navigateContent = (name: string) => {
         let path: string = '/videos/browse';
+        setPublishSelected(name === "Publish")
+        setEncryptSelected(name === "Encrypt Videos");
+        setContactUsSelected(name === "Contact Us");
+        setVideosSelected(name === "Videos")
         if (name === "Publish") {
             path = '/publish';
         }
@@ -87,13 +133,12 @@ export default function Main() {
             path = '/encrypt';
         }
         else if (name === "Contact Us") {
-            path = 'contactus';
+            path = '/contactus';
         }
+
         if (history.length > 0 && history.location.pathname !== path) {
             history.push(path);
         }
-
-        setSelectedNavItem(name);
     }
 
     const drawer = (
@@ -101,19 +146,25 @@ export default function Main() {
             <div>
                 <Divider />
                 <List>
-                    {['Videos', 'Publish'].map((anchor, text) => (
-                        <ListItem button key={anchor} selected={anchor === selectedNavItem} onClick={() => { navigateContent(anchor) }}>
-                            <ListItemText primary={anchor} />
-                        </ListItem>
-                    ))}
+                    <ListItem button selected={videosSelected} onClick={() => { navigateContent("Videos") }}>
+                        <MovieIcon style={{ paddingRight: 5 }} />
+                        <ListItemText primary={"Videos"} />
+                    </ListItem>
+                    <ListItem button selected={publishSelected} onClick={() => { navigateContent("Publish") }}>
+                        <PublishIcon style={{ paddingRight: 5 }} />
+                        <ListItemText primary={"Publish"} />
+                    </ListItem>
                 </List>
                 <Divider />
                 <List>
-                    {['Encrypt Videos', 'Contact Us'].map((anchor, text) => (
-                        <ListItem button key={anchor} selected={anchor === selectedNavItem} onClick={() => { navigateContent(anchor); }}>
-                            <ListItemText primary={anchor} />
-                        </ListItem>
-                    ))}
+                    <ListItem button selected={encryptSelected} onClick={() => { navigateContent("Encrypt Videos") }}>
+                        <EncryptIcon style={{ paddingRight: 5 }} />
+                        <ListItemText primary={"Encrypt Videos"} />
+                    </ListItem>
+                    <ListItem button selected={contactUsSelected} onClick={() => { navigateContent("Contact Us") }}>
+                        <ContactIcon style={{ paddingRight: 5 }} />
+                        <ListItemText primary={"Contact Us"} />
+                    </ListItem>
                 </List>
             </div>
         </div>
@@ -121,24 +172,24 @@ export default function Main() {
     return (
         <div>
             <AppBar position='fixed'>
-            {
-                promiseInProgress &&
-                <div
-                style={{
-                    marginTop: 90,
-                    width: "100%",
-                    height: "100",
-                    position: "absolute",
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    zIndex: 9999
+                {
+                    promiseInProgress &&
+                    <div
+                        style={{
+                            marginTop: 90,
+                            width: "100%",
+                            height: "100",
+                            position: "absolute",
+                            display: "flex",
+                            justifyContent: "center",
+                            alignItems: "center",
+                            zIndex: 9999
 
-                }}
-                >
-                <Loader type="ThreeDots" color="darkblue" height={100} width={100} />
-                </div>
-            }
+                        }}
+                    >
+                        <Loader type="ThreeDots" color="darkblue" height={100} width={100} />
+                    </div>
+                }
 
                 <Toolbar style={{ justifyContent: 'space-between' }}>
                     <Hidden smUp implementation="css">
@@ -216,10 +267,33 @@ export default function Main() {
                     }
                 </Toolbar>
             </AppBar>
-           {userSession?.isUserSignedIn() &&
+            {userSession?.isUserSignedIn() &&
                 <div className={classes.content}>
-                    <ContentPane />
-                </div>
+                    <div style={{ paddingTop: 60, paddingLeft: 0, paddingRight: 0 }}>
+                        <Switch>
+                            <Route path="/videos/show/:id">
+                                <VideoPlayer />
+                            </Route>
+                            <Route path="/videos/browse">
+                                <BrowseVideos />
+                            </Route>
+                            <Route path="/publish/:id">
+                                <PublishVideo />
+                            </Route>
+                            <Route path="/publish">
+                                <PublishVideo />
+                            </Route>
+                            <Route path="/encrypt">
+                                <VideoEncryption />
+                            </Route>
+                            <Route path="/contactus">
+                                <ContactUs />
+                            </Route>
+                            <Route path="/">
+                                <Redirect to="/videos/browse" />
+                            </Route>
+                        </Switch>
+                    </div>                </div>
             }
         </div>
     );

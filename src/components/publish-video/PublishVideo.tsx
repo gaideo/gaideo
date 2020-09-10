@@ -1,4 +1,4 @@
-import React, { Fragment } from 'react';
+import React, { Fragment, useState, useEffect } from 'react';
 import "./PublishVideo.css";
 import { makeStyles, Theme, createStyles } from '@material-ui/core/styles';
 import Stepper from '@material-ui/core/Stepper';
@@ -11,7 +11,8 @@ import Dropzone from '../dropzone/Dropzone';
 import { VideoEntry } from '../../models/video-entry';
 import { useConnect } from '@blockstack/connect';
 import { trackPromise } from 'react-promise-tracker';
-import { useHistory } from 'react-router-dom';
+import { useHistory, useParams } from 'react-router-dom';
+import { loadBrowseEntry } from '../../utilities/data-utils';
 
 const useStyles = makeStyles((theme: Theme) =>
     createStyles({
@@ -34,7 +35,6 @@ export default function PublishVideo() {
 
     const classes = useStyles();
     const [activeStep, setActiveStep] = React.useState(0);
-    const steps = ['Enter search info', 'Upload files'];
     const [files, setFiles] = React.useState(Array<any>());
     const [uploading, setUploading] = React.useState(false);
     const [successfullUploaded, setSuccessfullUploaded] = React.useState(false);
@@ -52,6 +52,8 @@ export default function PublishVideo() {
     const { userSession } = authOptions;
     const userData = userSession?.loadUserData();
     const history = useHistory();
+    const { id } = useParams();
+    const [steps, setSteps] = useState(Array<string>());
 
     const onFilesAdded = (files: any) => {
         setFiles(files);
@@ -119,7 +121,7 @@ export default function PublishVideo() {
                             disabled={uploading || successfullUploaded}
                         />
                     </div>
-                    <div className="Files" style={{maxHeight: 500}}>
+                    <div className="Files" style={{ maxHeight: 500 }}>
                         {files.map(file => {
                             return (
                                 <div key={file.name} className="Row">
@@ -269,7 +271,7 @@ export default function PublishVideo() {
         setUploadFilesErrorMessage("");
         let videoEntry: VideoEntry = result as VideoEntry;
         if (userSession && videoEntry) {
-            setUploading(true);            
+            setUploading(true);
             try {
 
                 await userSession.putFile('videos/' + videoEntry.id + '.index', JSON.stringify(videoEntry), {
@@ -277,9 +279,9 @@ export default function PublishVideo() {
                     wasString: true,
                     sign: true
                 });
-                for (let i=0; i<files.length; i++) {
+                for (let i = 0; i < files.length; i++) {
                     if (files[i].name !== 'keys') {
-                        await sendRequest(files[i], videoEntry, userSession)                            
+                        await sendRequest(files[i], videoEntry, userSession)
                     }
                 }
 
@@ -296,13 +298,39 @@ export default function PublishVideo() {
         }
     }
 
+    const doUpdate = async () => {
+        if (userSession) {
+            let fileName = `videos/${id}.index`;
+            let be = await loadBrowseEntry(userSession, fileName, false );
+            if (be) {
+                let now: Date = new Date();
+                let nowUTC: Date = new Date(now.toUTCString());
+                be.videoEntry.title = title;
+                be.videoEntry.description = description;
+                be.videoEntry.keywords = keywords;
+                be.videoEntry.lastUpdateDate = nowUTC;
+                await userSession.putFile(fileName, JSON.stringify(be.videoEntry), {
+                    encrypt: true,
+                    sign: true,
+                    wasString: true
+                });
+                history.push("/");
+            }
+        }
+    }
+
     const handleNext = () => {
         if (activeStep === 0) {
             let valid = validateInfo();
             if (!valid) {
                 return;
             }
-            goNext();
+            if (id && steps.length === 1) {
+                trackPromise(doUpdate());
+            }
+            else {
+                goNext();
+            }
         }
         else if (activeStep === 1) {
             let result = validateUpload(files);
@@ -319,7 +347,7 @@ export default function PublishVideo() {
             trackPromise(doUpload(result));
         }
     };
-    
+
     const handleBack = () => {
         setActiveStep((prevActiveStep) => prevActiveStep - 1);
     };
@@ -332,14 +360,35 @@ export default function PublishVideo() {
         setKeywords("");
     };
 
+    useEffect(() => {
+        const refresh = async () => {
+            let foundExisting: boolean = false;
+            if (id && userSession) {
+                let be = await loadBrowseEntry(userSession, `videos/${id}.index`, false);
+                if (be) {
+                    foundExisting = true;
+                    setTitle(be.videoEntry.title);
+                    setDescription(be.videoEntry.description);
+                    setKeywords(be.videoEntry.keywords);
+                    setSteps(['Enter search info']);
+                }
+            }
+            if (!foundExisting) {
+                setSteps(['Enter search info', 'Upload files']);
+
+            }
+        }
+        refresh();
+    }, [userSession, id])
+
     return (
         <div className={classes.root}>
-            <Stepper style={{maxHeight: 800}} activeStep={activeStep}>
+            <Stepper style={{ maxHeight: 800 }} activeStep={activeStep}>
                 {steps.map((label, index) => {
                     const stepProps: { completed?: boolean } = {};
                     const labelProps: { optional?: React.ReactNode } = {};
                     return (
-                        <Step style={{maxHeight: 800}} key={label} {...stepProps}>
+                        <Step style={{ maxHeight: 800 }} key={label} {...stepProps}>
                             <StepLabel {...labelProps}>{label}</StepLabel>
                         </Step>
                     );
@@ -357,7 +406,7 @@ export default function PublishVideo() {
                     </div>
                 ) : (
                         <div>
-                            <Box style={{width: '100%', minHeight: 300 }}>
+                            <Box style={{ width: '100%', minHeight: 300 }}>
                                 <FormControl>
                                     {getStepContent(activeStep)}
                                 </FormControl>

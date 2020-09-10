@@ -15,7 +15,10 @@ export function ContentPane() {
                     <VideoPlayer />
                 </Route>
                 <Route path="/videos/browse">
-                <BrowseVideos />
+                    <BrowseVideos />
+                </Route>
+                <Route path="/publish/:id">
+                    <PublishVideo />
                 </Route>
                 <Route path="/publish">
                     <PublishVideo />

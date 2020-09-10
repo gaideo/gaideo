@@ -39,6 +39,12 @@ export default function VideoActions(props: any) {
                 trackPromise(deleteVideoEntry(videoEntry, userSession).then(x => {history.push("/")}))
             }
         }
+        if (option === 'Edit') {
+            let videoEntry: VideoEntry = props.videoEntry as VideoEntry;
+            if (videoEntry) {
+                history.push(`/publish/${videoEntry.id}`);
+            }
+        }
         handleClose();
     };
 

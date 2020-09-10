@@ -4,7 +4,7 @@ import Hls from "hls.js";
 import "../browse-videos/BrowseVideos.css";
 import { useParams, useHistory } from 'react-router-dom';
 import { VideoDescription } from './VideoDescription';
-import { useWindowSize } from '../../utilities/layout-utils';
+import { useWindowSize } from '../../effects/size-effect';
 
 interface VideoPlayerContext {
   current: any;

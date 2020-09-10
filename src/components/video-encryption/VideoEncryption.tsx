@@ -1,7 +1,8 @@
 import React from 'react';
 import { Typography, Link } from '@material-ui/core';
 export function VideoEncryption() {
-    return (        
+
+    return (
         <Typography paragraph>
             A docker image has been created with all of the necessary tools and scripts to encrypt videos on your PC. 
             Once your video is encrypted you can upload them to your personal Gaia storage by clicking on <Link href="/#/publish">Publish.</Link>
