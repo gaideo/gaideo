@@ -162,13 +162,16 @@ export default function PublishVideo() {
             }
             let name: string = f.name;
             if (!name.endsWith('.m3u8')
+                && !name.endsWith('keys')
                 && name !== 'key.bin'
                 && !name.endsWith('.ts')
                 && !name.endsWith('_preview.jpg')) {
                 hasError = true;
                 break;
             }
-            manifest.push(name);
+            if (name !== 'keys') {
+                manifest.push(name);
+            }
             if (name === 'key.bin') {
                 foundKey = true;
             }
@@ -188,6 +191,10 @@ export default function PublishVideo() {
             if (keywords?.length > 0) {
                 kwds = keywords.split(/\s+/).filter(x => x.trim().length === 0);
             }
+            let now: Date = new Date();
+            let nowUTC: Date = new Date(now.toUTCString());
+            console.log(now);
+            console.log(nowUTC);
             const ret: VideoEntry = {
                 id: id,
                 title: title,
@@ -197,7 +204,9 @@ export default function PublishVideo() {
                 keywords: kwds,
                 userName: userData?.username,
                 identityAddress: userData?.identityAddress,
-                manifest: manifest
+                manifest: manifest,
+                createdDateUTC: nowUTC,
+                lastUpdatedUTC: nowUTC
             }
             return ret;
         }
@@ -269,7 +278,9 @@ export default function PublishVideo() {
                     sign: true
                 });
                 for (let i=0; i<files.length; i++) {
-                    await sendRequest(files[i], videoEntry, userSession)                            
+                    if (files[i].name !== 'keys') {
+                        await sendRequest(files[i], videoEntry, userSession)                            
+                    }
                 }
 
                 setSuccessfullUploaded(true);

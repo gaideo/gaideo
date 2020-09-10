@@ -4,6 +4,7 @@ import Hls from "hls.js";
 import "../browse-videos/BrowseVideos.css";
 import { useParams, useHistory } from 'react-router-dom';
 import { VideoDescription } from './VideoDescription';
+import { useWindowSize } from '../../utilities/layout-utils';
 
 interface VideoPlayerContext {
   current: any;
@@ -18,6 +19,8 @@ export function VideoPlayer() {
   const context: VideoPlayerContext = {
     current: {}
   };
+
+  const [width, height] = useWindowSize('videoParent');
 
   function process(playlist: any) {
     return context.current.videoKey as ArrayBuffer;
@@ -92,11 +95,10 @@ export function VideoPlayer() {
   }, [userSession, customLoader, id, history, context]);
 
   return (
-    <div>
-      <div id="videoParent" style={{ width: "800" }}>
-        <video id="video" width="800" style={{ objectFit: "initial" }} controls></video>
+<div>
+      <div id="videoParent" style={{ width: "100%", height:"calc(70vh" }}>
+        <video id="video" width={width} height={height} style={{ objectFit: "initial" }} controls></video>
       </div>
       <VideoDescription />
-    </div>
-  );
+    </div>  );
 }

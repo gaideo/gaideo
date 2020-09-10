@@ -6,6 +6,8 @@ import { UserData } from 'blockstack/lib/auth/authApp';
 import AccountCircle from '@material-ui/icons/AccountCircle';
 import { useHistory } from 'react-router-dom';
 import { ContentPane } from '../../content-pane/ContentPane';
+import Loader from 'react-loader-spinner';
+import { usePromiseTracker } from 'react-promise-tracker';
 
 const drawerWidth = 240;
 const useStyles = makeStyles((theme) => ({
@@ -47,6 +49,7 @@ export default function Main() {
     const [selectedNavItem, setSelectedNavItem] = useState('Videos');
     const open = Boolean(anchorEl);
     const history = useHistory();
+    const { promiseInProgress } = usePromiseTracker();
 
     useEffect(() => {
 
@@ -118,6 +121,25 @@ export default function Main() {
     return (
         <div>
             <AppBar position='fixed'>
+            {
+                promiseInProgress &&
+                <div
+                style={{
+                    marginTop: 90,
+                    width: "100%",
+                    height: "100",
+                    position: "absolute",
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    zIndex: 9999
+
+                }}
+                >
+                <Loader type="ThreeDots" color="darkblue" height={100} width={100} />
+                </div>
+            }
+
                 <Toolbar style={{ justifyContent: 'space-between' }}>
                     <Hidden smUp implementation="css">
                         <IconButton
@@ -150,7 +172,7 @@ export default function Main() {
                         {drawer}
                     </Drawer>
                         <Typography variant="h6" className={classes.title} style={{ paddingLeft: 250 }}>
-                            Welcome to Gaideo, a privacy-based video sharing platform
+                            Welcome to Gaideo, a secure way to internet
                         </Typography>
                     </Hidden>
                     {
@@ -194,7 +216,7 @@ export default function Main() {
                     }
                 </Toolbar>
             </AppBar>
-            {userSession?.isUserSignedIn() &&
+           {userSession?.isUserSignedIn() &&
                 <div className={classes.content}>
                     <ContentPane />
                 </div>

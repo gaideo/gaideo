@@ -8,4 +8,6 @@ export interface VideoEntry {
     identityAddress: string;
     keywords?: string[] | null;
     isPublic: boolean;
+    createdDateUTC: Date;
+    lastUpdatedUTC: Date;
 }
