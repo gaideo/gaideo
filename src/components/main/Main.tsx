@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { makeStyles, Divider, List, ListItem, ListItemText, AppBar, Toolbar, Drawer, Typography, Hidden, IconButton, Button, Menu, MenuItem } from "@material-ui/core";
+import { makeStyles, Divider, List, ListItem, ListItemText, AppBar, Toolbar, Drawer, Typography, Hidden, IconButton, Button, Menu, MenuItem, CircularProgress, Backdrop } from "@material-ui/core";
 import MenuIcon from '@material-ui/icons/MenuOutlined';
 import PublishIcon from '@material-ui/icons/PublishOutlined';
 import MovieIcon from '@material-ui/icons/MovieOutlined';
@@ -9,7 +9,6 @@ import { useConnect } from '@blockstack/connect';
 import { UserData } from 'blockstack/lib/auth/authApp';
 import AccountCircle from '@material-ui/icons/AccountCircle';
 import { useHistory, Route, Switch, Redirect, useRouteMatch } from 'react-router-dom';
-import Loader from 'react-loader-spinner';
 import { usePromiseTracker } from 'react-promise-tracker';
 import { VideoPlayer } from '../video-player/VideoPlayer';
 import { BrowseVideos } from '../browse-videos/BrowseVideos';
@@ -39,7 +38,11 @@ const useStyles = makeStyles((theme) => ({
     button: {
         outline: 'none',
         verticalAlign: 'middle'
-    }
+    },
+    backdrop: {
+        zIndex: theme.zIndex.drawer + 1,
+        color: '#fff',
+    },
 }));
 
 export default function Main() {
@@ -174,21 +177,9 @@ export default function Main() {
             <AppBar position='fixed'>
                 {
                     promiseInProgress &&
-                    <div
-                        style={{
-                            marginTop: 90,
-                            width: "100%",
-                            height: "100",
-                            position: "absolute",
-                            display: "flex",
-                            justifyContent: "center",
-                            alignItems: "center",
-                            zIndex: 9999
-
-                        }}
-                    >
-                        <Loader type="ThreeDots" color="darkblue" height={100} width={100} />
-                    </div>
+                    <Backdrop className={classes.backdrop} open={promiseInProgress}>
+                        <CircularProgress color="inherit" />
+                    </Backdrop>
                 }
 
                 <Toolbar style={{ justifyContent: 'space-between' }}>
@@ -200,28 +191,33 @@ export default function Main() {
                             onClick={handleSmallDevice}
                         >  <MenuIcon />
                         </IconButton>
-                        <Drawer
-                            classes={{
-                                paper: classes.drawer,
-                            }}
-                            open={state}
-                            onClose={handleSmallDevice}
-                        >
-                            {drawer}
-                        </Drawer>
+                        {userSession?.isUserSignedIn() &&
+                            <Drawer
+                                classes={{
+                                    paper: classes.drawer,
+                                }}
+                                open={state}
+                                onClose={handleSmallDevice}
+                            >
+                                {drawer}
+                            </Drawer>
+                        }
                         <Typography component="span" variant="h6" className={classes.title}>
                             Welcome to Gaideo
                         </Typography>
                     </Hidden>
-                    <Hidden xsDown implementation="css"> <Drawer
-                        classes={{
-                            paper: classes.drawer,
-                        }}
-                        open
-                        variant='permanent'
-                    >
-                        {drawer}
-                    </Drawer>
+                    <Hidden xsDown implementation="css">
+                        {userSession?.isUserSignedIn() &&
+                            <Drawer
+                                classes={{
+                                    paper: classes.drawer,
+                                }}
+                                open
+                                variant='permanent'
+                            >
+                                {drawer}
+                            </Drawer>
+                        }
                         <Typography variant="h6" className={classes.title} style={{ paddingLeft: 250 }}>
                             Welcome to Gaideo, a secure way to internet
                         </Typography>

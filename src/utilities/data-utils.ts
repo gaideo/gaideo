@@ -2,6 +2,7 @@ import { VideoEntry } from "../models/video-entry";
 import { UserSession } from "blockstack";
 import { BrowseEntry } from "../models/browse-entry";
 import { base64ArrayBuffer } from "./encoding-utils";
+import { getNow, getTimeAge } from "./time-utils";
 
 
 export async function deleteVideoEntry(videoEntry: VideoEntry, userSession: any) {
@@ -41,10 +42,20 @@ export async function loadBrowseEntry(userSession: UserSession, indexFile: strin
             else {
                 content = undefined;
             }
+            let cd: Date;
+            if (!videoEntry.createdDateUTC) {
+                cd = getNow();
+            }
+            else {
+                cd = new Date(videoEntry.createdDateUTC);
+            }
+            let now = getNow();
+            let age = getTimeAge(cd, now);
             be = {
                 videoEntry: videoEntry,
                 previewImage: '',
-                source: source
+                source: source,
+                age: age
             };
             let buffer = content as ArrayBuffer;
             if (!loadPreviewImage || buffer) {

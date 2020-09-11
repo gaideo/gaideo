@@ -4,6 +4,7 @@ import { useParams } from "react-router-dom";
 import { BrowseEntry } from "../../models/browse-entry";
 import { loadBrowseEntry } from "../../utilities/data-utils";
 import { Typography } from '@material-ui/core';
+import { getNow, getLongDate } from '../../utilities/time-utils';
 
 export function VideoDescription() {
     const { authOptions } = useConnect();
@@ -30,7 +31,10 @@ export function VideoDescription() {
                 <Typography variant="h5">{browseEntry?.videoEntry?.title}</Typography>
             </div>
             <div>
-                <Typography variant="subtitle1">{browseEntry?.videoEntry?.description}</Typography>
+                <Typography variant="subtitle1">{`${getLongDate(new Date(browseEntry?.videoEntry.createdDateUTC ? browseEntry.videoEntry.createdDateUTC : getNow()))}`}</Typography>
+            </div>
+            <div>
+                <Typography variant="subtitle2">{browseEntry?.videoEntry?.description}</Typography>
             </div>
         </div>
 

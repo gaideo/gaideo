@@ -13,6 +13,7 @@ import { useConnect } from '@blockstack/connect';
 import { trackPromise } from 'react-promise-tracker';
 import { useHistory, useParams } from 'react-router-dom';
 import { loadBrowseEntry } from '../../utilities/data-utils';
+import { getNow } from '../../utilities/time-utils';
 
 const useStyles = makeStyles((theme: Theme) =>
     createStyles({
@@ -193,10 +194,7 @@ export default function PublishVideo() {
             if (keywords?.length > 0) {
                 kwds = keywords.split(/\s+/).filter(x => x.trim().length === 0);
             }
-            let now: Date = new Date();
-            let nowUTC: Date = new Date(now.toUTCString());
-            console.log(now);
-            console.log(nowUTC);
+            let nowUTC = getNow();
             const ret: VideoEntry = {
                 id: id,
                 title: title,
@@ -303,12 +301,11 @@ export default function PublishVideo() {
             let fileName = `videos/${id}.index`;
             let be = await loadBrowseEntry(userSession, fileName, false );
             if (be) {
-                let now: Date = new Date();
-                let nowUTC: Date = new Date(now.toUTCString());
+                let nowUTC: Date = getNow();
                 be.videoEntry.title = title;
                 be.videoEntry.description = description;
                 be.videoEntry.keywords = keywords;
-                be.videoEntry.lastUpdateDate = nowUTC;
+                be.videoEntry.lastUpdatedUTC = nowUTC;
                 await userSession.putFile(fileName, JSON.stringify(be.videoEntry), {
                     encrypt: true,
                     sign: true,
