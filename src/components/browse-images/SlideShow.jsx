@@ -27,8 +27,8 @@ export function SlideShow(props) {
             </IconButton>
             <Zoom ref={slideRef} {...zoomInProperties}>
                 {props.images.map((each, index) => (
-                    <div style={{ height: '80vh' }} key={index}>
-                        <img alt={each.title} src={each.src} />
+                    <div style={{ height: '80vh', maxWidth: '100%' }} key={index}>
+                        <img style={{ height: '80vh', maxWidth: '100%'}} alt={each.title} src={each.src} />
                     </div>
                 ))}
             </Zoom>

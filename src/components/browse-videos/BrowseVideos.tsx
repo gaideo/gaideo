@@ -34,7 +34,8 @@ export function BrowseVideos() {
         const refresh = async () => {
             const indexes: string[] = [];
             let arr: BrowseEntry[] = [];
-/*            let deleteme: string[] = [];
+            /*
+            let deleteme: string[] = [];
             await userSession?.listFiles((name: string) => {
                 deleteme.push(name);
                 return true;

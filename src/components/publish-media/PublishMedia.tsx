@@ -12,7 +12,7 @@ import { MediaEntry, MediaType } from '../../models/media-entry';
 import { useConnect } from '@blockstack/connect';
 import { trackPromise } from 'react-promise-tracker';
 import { useHistory, useParams } from 'react-router-dom';
-import { loadBrowseEntry } from '../../utilities/data-utils';
+import { deleteVideoEntry, loadBrowseEntry } from '../../utilities/data-utils';
 import { getNow } from '../../utilities/time-utils';
 import { makeUUID4 } from 'blockstack';
 import { BrowseEntry } from '../../models/browse-entry';
@@ -152,14 +152,14 @@ export default function PublishVideo() {
         return true;
     }
 
-    const isImageName = (name:string, lowerCase: boolean) => {
+    const isImageName = (name: string, lowerCase: boolean) => {
         let lname: string = name;
         if (lowerCase) {
             lname = name.toLocaleLowerCase();
         }
         return lname.endsWith('.jpg')
-          || lname.endsWith('.jpeg')
-          || lname.endsWith('.png');
+            || lname.endsWith('.jpeg')
+            || lname.endsWith('.png');
     }
 
     const validateUpload: ValidateUploadResultDelegate = (filesToUpload) => {
@@ -288,33 +288,51 @@ export default function PublishVideo() {
                 wasString: false,
                 contentType: getVideoFileContentType(file.name)
             })
+            return true;
 
         }
         catch (error) {
+            console.log(`Unable to upload video file: ${file.name}`);
             console.log(error);
         }
+        return false;
     }
 
     const uploadImages = async (file: any, mediaEntry: MediaEntry, userSession: any) => {
         try {
-            let copy = {...mediaEntry};
+            let copy = { ...mediaEntry };
             copy.id = `${mediaEntry.id}_${file.name}`;
             copy.manifest = [file.name];
             if (mediaEntry.manifest.length > 1) {
                 copy.title = `${title} (${file.name})`;
             }
-            await userSession.putFile(`images/${copy.id}.index`, JSON.stringify(copy), {
+            let indexFile = `images/${copy.id}.index`;
+            await userSession.putFile(indexFile, JSON.stringify(copy), {
                 encrypt: true,
                 wasString: true,
                 sign: true
             });
 
-            let name: string = `images/${mediaEntry.id}/${file.name}`;
-            await userSession.putFile(name, file, {
-                encrypt: true,
-                wasString: false,
-                contentType: getImageFileContentType(file.name)
-            })
+            try {
+                let name: string = `images/${mediaEntry.id}/${file.name}`;
+                await userSession.putFile(name, file, {
+                    encrypt: true,
+                    wasString: false,
+                    contentType: getImageFileContentType(file.name)
+                })
+            }
+            catch (error) {
+                console.log(`Unable to upload image ${file.name}.`)
+                try {
+                    await userSession?.deleteFile(indexFile, {
+                        wasSigned: false
+                    });
+                }
+                catch (e2) {
+                    console.log(`Unable to cleanup index file: ${indexFile}.`)
+                    console.log(e2);
+                }
+            }
 
         }
         catch (error) {
@@ -358,10 +376,21 @@ export default function PublishVideo() {
                         wasString: true,
                         sign: true
                     });
+                    let failed = false;
                     for (let i = 0; i < files.length; i++) {
                         if (files[i].name !== 'keys') {
-                            await uploadVideo(files[i], mediaEntry, userSession)
+                            let success = await uploadVideo(files[i], mediaEntry, userSession)
+                            if (!success) {
+                                success = await uploadVideo(files[i], mediaEntry, userSession);
+                            }
+                            if (!success) {
+                                failed = true;
+                                break;
+                            }
                         }
+                    }
+                    if (failed) {
+                        deleteVideoEntry(mediaEntry, userSession);
                     }
                 }
                 else if (mediaEntry.mediaType === MediaType.Images) {
@@ -404,7 +433,7 @@ export default function PublishVideo() {
                 let kwds: string[] | null = null;
                 if (keywords?.length > 0) {
                     kwds = keywords.split(/\s+/g).filter(x => x.trim().length !== 0);
-                }    
+                }
                 let nowUTC: Date = getNow();
                 be.mediaEntry.title = title;
                 be.mediaEntry.description = description;
