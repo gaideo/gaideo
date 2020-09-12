@@ -550,12 +550,12 @@ export default function PublishVideo() {
                     </div>
                 ) : (
                         <div>
-                            <Box style={{ width: '100%', minHeight: 300 }}>
+                            <Box style={{ width: '100%', minHeight: 300, paddingLeft:30 }}>
                                 <FormControl>
                                     {getStepContent(activeStep)}
                                 </FormControl>
                             </Box>
-                            <div style={{ paddingTop: 20 }}>
+                            <div style={{ paddingTop: 20, paddingLeft: 30 }}>
                                 <Button disabled={activeStep === 0 || uploading || successfullUploaded} onClick={handleBack} className={classes.button}>
                                     Back
                                 </Button>
