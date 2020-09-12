@@ -1,7 +1,7 @@
-import { VideoEntry } from "./video-entry";
+import { MediaEntry } from "./media-entry";
 
 export interface BrowseEntry {
-    videoEntry: VideoEntry;
+    mediaEntry: MediaEntry;
     previewImage?: string;
     source: string;
     age: string

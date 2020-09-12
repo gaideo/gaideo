@@ -1,13 +1,18 @@
-export interface VideoEntry {
+export enum MediaType {
+    Video,
+    Images
+}
+
+export interface MediaEntry {
     id: string;
     title: string;
     description: string;
     manifest: string[];
-    previewImage: string;
     userName: string;
     identityAddress: string;
     keywords?: string[] | null;
-    isPublic: boolean;
     createdDateUTC: Date;
     lastUpdatedUTC: Date;
+    mediaType?: MediaType;
+    previewImageName?: string;
 }

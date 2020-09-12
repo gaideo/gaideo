@@ -1,5 +1,5 @@
 import React, { Fragment, useState, useEffect } from 'react';
-import "./PublishVideo.css";
+import "./PublishMedia.css";
 import { makeStyles, Theme, createStyles } from '@material-ui/core/styles';
 import Stepper from '@material-ui/core/Stepper';
 import Step from '@material-ui/core/Step';
@@ -8,12 +8,16 @@ import Button from '@material-ui/core/Button';
 import Typography from '@material-ui/core/Typography';
 import { TextField, FormControl, Box, FormHelperText } from '@material-ui/core';
 import Dropzone from '../dropzone/Dropzone';
-import { VideoEntry } from '../../models/video-entry';
+import { MediaEntry, MediaType } from '../../models/media-entry';
 import { useConnect } from '@blockstack/connect';
 import { trackPromise } from 'react-promise-tracker';
 import { useHistory, useParams } from 'react-router-dom';
 import { loadBrowseEntry } from '../../utilities/data-utils';
 import { getNow } from '../../utilities/time-utils';
+import { makeUUID4 } from 'blockstack';
+import { BrowseEntry } from '../../models/browse-entry';
+
+interface ParamTypes { id: string; }
 
 const useStyles = makeStyles((theme: Theme) =>
     createStyles({
@@ -32,7 +36,7 @@ const useStyles = makeStyles((theme: Theme) =>
 
 export default function PublishVideo() {
     const keywordsMessage: string = 'Letters, numbers, special characters # or -';
-    type ValidateUploadResultDelegate = (filesToUpload: string[]) => VideoEntry | string;
+    type ValidateUploadResultDelegate = (filesToUpload: string[]) => MediaEntry | string;
 
     const classes = useStyles();
     const [activeStep, setActiveStep] = React.useState(0);
@@ -53,7 +57,7 @@ export default function PublishVideo() {
     const { userSession } = authOptions;
     const userData = userSession?.loadUserData();
     const history = useHistory();
-    const { id } = useParams();
+    const { id } = useParams<ParamTypes>();
     const [steps, setSteps] = useState(Array<string>());
 
     const onFilesAdded = (files: any) => {
@@ -148,15 +152,28 @@ export default function PublishVideo() {
         return true;
     }
 
+    const isImageName = (name:string, lowerCase: boolean) => {
+        let lname: string = name;
+        if (lowerCase) {
+            lname = name.toLocaleLowerCase();
+        }
+        return lname.endsWith('.jpg')
+          || lname.endsWith('.jpeg')
+          || lname.endsWith('.png');
+    }
+
     const validateUpload: ValidateUploadResultDelegate = (filesToUpload) => {
         let hasError: boolean = false;
         if (!filesToUpload || filesToUpload.length === 0) {
             hasError = true;
         }
         let foundKey: boolean = false;
-        let foundPreview: boolean = false;
+        let previewImageName: string | null = null;
+        let imageCount: number = 0;
         let id: string = '';
         let manifest: string[] = [];
+        id = makeUUID4();
+
         for (let i = 0; i < filesToUpload.length; i++) {
             let f: any = filesToUpload[i];
             if (!f.name) {
@@ -164,26 +181,29 @@ export default function PublishVideo() {
                 break;
             }
             let name: string = f.name;
-            if (!name.endsWith('.m3u8')
-                && !name.endsWith('keys')
-                && name !== 'key.bin'
-                && !name.endsWith('.ts')
-                && !name.endsWith('_preview.jpg')) {
+            let lname: string = name.toLowerCase();
+            if (!lname.endsWith('.m3u8')
+                && !lname.endsWith('keys')
+                && lname !== 'key.bin'
+                && !lname.endsWith('.ts')
+                && !isImageName(lname, false)) {
                 hasError = true;
                 break;
             }
-            if (name !== 'keys') {
-                manifest.push(name);
+            if (isImageName(lname, false)) {
+                imageCount++;
             }
-            if (name === 'key.bin') {
+            if (lname !== 'keys') {
+                manifest.push(`${name}`);
+            }
+            if (lname === 'key.bin') {
                 foundKey = true;
             }
-            if (name.endsWith('_preview.jpg')) {
-                foundPreview = true;
-                id = name.replace('_preview.jpg', '');
+            if (lname.endsWith('_preview.jpg')) {
+                previewImageName = name;
             }
         }
-        if (!foundKey || !foundPreview || id.trim().length === 0) {
+        if (imageCount < filesToUpload.length && (!foundKey || !previewImageName)) {
             hasError = true;
         }
 
@@ -192,23 +212,44 @@ export default function PublishVideo() {
             && (userData.username?.length > 0 || userData?.identityAddress?.length > 0)) {
             let kwds: string[] | null = null;
             if (keywords?.length > 0) {
-                kwds = keywords.split(/\s+/).filter(x => x.trim().length === 0);
+                kwds = keywords.split(/\s+/g).filter(x => x.trim().length !== 0);
             }
             let nowUTC = getNow();
-            const ret: VideoEntry = {
-                id: id,
-                title: title,
-                description: description,
-                previewImage: '',
-                isPublic: false,
-                keywords: kwds,
-                userName: userData?.username,
-                identityAddress: userData?.identityAddress,
-                manifest: manifest,
-                createdDateUTC: nowUTC,
-                lastUpdatedUTC: nowUTC
+
+            if (imageCount === filesToUpload.length) {
+                const imagesEntry: MediaEntry = {
+                    id: id,
+                    title: title,
+                    description: description,
+                    keywords: kwds,
+                    userName: userData?.username,
+                    identityAddress: userData?.identityAddress,
+                    manifest: manifest,
+                    createdDateUTC: nowUTC,
+                    lastUpdatedUTC: nowUTC,
+                    mediaType: MediaType.Images
+                }
+                return imagesEntry;
             }
-            return ret;
+            else {
+                if (previewImageName && previewImageName.trim().length > 0) {
+                    id = `${id}_${previewImageName.replace('_preview.jpg', '')}`
+                }
+                const mediaEntry: MediaEntry = {
+                    id: id,
+                    title: title,
+                    description: description,
+                    keywords: kwds,
+                    userName: userData?.username,
+                    identityAddress: userData?.identityAddress,
+                    manifest: manifest,
+                    createdDateUTC: nowUTC,
+                    lastUpdatedUTC: nowUTC,
+                    mediaType: MediaType.Video,
+                    previewImageName: previewImageName ? `videos/${id}/${previewImageName}` : ''
+                }
+                return mediaEntry;
+            }
         }
         console.log('error here');
         return 'Please select only the files in the root of your HLS directory.';
@@ -226,13 +267,53 @@ export default function PublishVideo() {
         }
     }
 
-    const sendRequest = async (file: any, videoEntry: VideoEntry, userSession: any) => {
+    const getImageFileContentType = (name: string) => {
+        let lowerName = name.toLocaleLowerCase();
+        if (lowerName.endsWith(".png")) {
+            return "image/png";
+        }
+        else if (lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg")) {
+            return "image/jpeg";
+        }
+        else {
+            return "application/octet-stream"
+        }
+    }
+
+    const uploadVideo = async (file: any, mediaEntry: MediaEntry, userSession: any) => {
         try {
-            let name: string = `videos/${videoEntry.id}/${file.name}`;
+            let name: string = `videos/${mediaEntry.id}/${file.name}`;
             await userSession.putFile(name, file, {
                 encrypt: file.name === 'key.bin' || file.name.endsWith('_preview.jpg'),
                 wasString: false,
                 contentType: getVideoFileContentType(file.name)
+            })
+
+        }
+        catch (error) {
+            console.log(error);
+        }
+    }
+
+    const uploadImages = async (file: any, mediaEntry: MediaEntry, userSession: any) => {
+        try {
+            let copy = {...mediaEntry};
+            copy.id = `${mediaEntry.id}_${file.name}`;
+            copy.manifest = [file.name];
+            if (mediaEntry.manifest.length > 1) {
+                copy.title = `${title} (${file.name})`;
+            }
+            await userSession.putFile(`images/${copy.id}.index`, JSON.stringify(copy), {
+                encrypt: true,
+                wasString: true,
+                sign: true
+            });
+
+            let name: string = `images/${mediaEntry.id}/${file.name}`;
+            await userSession.putFile(name, file, {
+                encrypt: true,
+                wasString: false,
+                contentType: getImageFileContentType(file.name)
             })
 
         }
@@ -267,25 +348,38 @@ export default function PublishVideo() {
     const doUpload = async (result: any) => {
         setUploadFilesError(false)
         setUploadFilesErrorMessage("");
-        let videoEntry: VideoEntry = result as VideoEntry;
-        if (userSession && videoEntry) {
+        let mediaEntry: MediaEntry = result as MediaEntry;
+        if (userSession && mediaEntry) {
             setUploading(true);
             try {
-
-                await userSession.putFile('videos/' + videoEntry.id + '.index', JSON.stringify(videoEntry), {
-                    encrypt: true,
-                    wasString: true,
-                    sign: true
-                });
-                for (let i = 0; i < files.length; i++) {
-                    if (files[i].name !== 'keys') {
-                        await sendRequest(files[i], videoEntry, userSession)
+                if (mediaEntry.mediaType === MediaType.Video) {
+                    await userSession.putFile('videos/' + mediaEntry.id + '.index', JSON.stringify(mediaEntry), {
+                        encrypt: true,
+                        wasString: true,
+                        sign: true
+                    });
+                    for (let i = 0; i < files.length; i++) {
+                        if (files[i].name !== 'keys') {
+                            await uploadVideo(files[i], mediaEntry, userSession)
+                        }
+                    }
+                }
+                else if (mediaEntry.mediaType === MediaType.Images) {
+                    for (let i = 0; i < files.length; i++) {
+                        if (files[i].name !== 'keys') {
+                            await uploadImages(files[i], mediaEntry, userSession)
+                        }
                     }
                 }
 
                 setSuccessfullUploaded(true);
                 setUploading(false);
-                history.push("/");
+                if (mediaEntry.mediaType === MediaType.Images) {
+                    history.push("/images/browse");
+                }
+                else {
+                    history.push("/videos/browse");
+                }
             } catch (e) {
                 console.log(e);
                 setUploadFilesError(true)
@@ -298,20 +392,35 @@ export default function PublishVideo() {
 
     const doUpdate = async () => {
         if (userSession) {
-            let fileName = `videos/${id}.index`;
-            let be = await loadBrowseEntry(userSession, fileName, false );
+            let mediaType = MediaType.Video;
+            let indexFile = `videos/${id}.index`;
+            if (isImageName(id, true)) {
+                mediaType = MediaType.Images;
+                indexFile = `images/${id}.index`
+            }
+            let result = await loadBrowseEntry(userSession, indexFile, false, mediaType);
+            let be = result as BrowseEntry;
             if (be) {
+                let kwds: string[] | null = null;
+                if (keywords?.length > 0) {
+                    kwds = keywords.split(/\s+/g).filter(x => x.trim().length !== 0);
+                }    
                 let nowUTC: Date = getNow();
-                be.videoEntry.title = title;
-                be.videoEntry.description = description;
-                be.videoEntry.keywords = keywords;
-                be.videoEntry.lastUpdatedUTC = nowUTC;
-                await userSession.putFile(fileName, JSON.stringify(be.videoEntry), {
+                be.mediaEntry.title = title;
+                be.mediaEntry.description = description;
+                be.mediaEntry.keywords = kwds;
+                be.mediaEntry.lastUpdatedUTC = nowUTC;
+                await userSession.putFile(indexFile, JSON.stringify(be.mediaEntry), {
                     encrypt: true,
                     sign: true,
                     wasString: true
                 });
-                history.push("/");
+                if (mediaType == MediaType.Images) {
+                    history.push('/images/browse');
+                }
+                else {
+                    history.push('/videos/browse');
+                }
             }
         }
     }
@@ -361,12 +470,21 @@ export default function PublishVideo() {
         const refresh = async () => {
             let foundExisting: boolean = false;
             if (id && userSession) {
-                let be = await loadBrowseEntry(userSession, `videos/${id}.index`, false);
+                let mediaType = MediaType.Video;
+                let indexFile = `videos/${id}.index`;
+                if (isImageName(id, true)) {
+                    mediaType = MediaType.Images;
+                    indexFile = `images/${id}.index`
+                }
+                let result = await loadBrowseEntry(userSession, indexFile, false, mediaType);
+                let be = result as BrowseEntry;
                 if (be) {
                     foundExisting = true;
-                    setTitle(be.videoEntry.title);
-                    setDescription(be.videoEntry.description);
-                    setKeywords(be.videoEntry.keywords);
+                    setTitle(be.mediaEntry.title);
+                    setDescription(be.mediaEntry.description);
+                    if (be.mediaEntry && be.mediaEntry.keywords && be.mediaEntry.keywords.length > 0) {
+                        setKeywords(be.mediaEntry.keywords.join(' '));
+                    }
                     setSteps(['Enter search info']);
                 }
             }

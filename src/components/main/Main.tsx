@@ -11,10 +11,11 @@ import AccountCircle from '@material-ui/icons/AccountCircle';
 import { useHistory, Route, Switch, Redirect, useRouteMatch } from 'react-router-dom';
 import { usePromiseTracker } from 'react-promise-tracker';
 import { VideoPlayer } from '../video-player/VideoPlayer';
-import { BrowseVideos } from '../browse-videos/BrowseVideos';
-import PublishVideo from '../publish-video/PublishVideo';
+import { BrowseVideos } from '../browse/BrowseVideos';
+import PublishVideo from '../publish-media/PublishMedia';
 import { VideoEncryption } from '../video-encryption/VideoEncryption';
 import { ContactUs } from '../contact-us/ContactUs';
+import { BrowseImages } from '../browse/BrowseImages';
 
 const drawerWidth = 240;
 const useStyles = makeStyles((theme) => ({
@@ -63,10 +64,12 @@ export default function Main() {
     const publishRoute = useRouteMatch("/publish");
     const isPublish = window.location.hash.startsWith('#/publish');
     const isVideos = window.location.hash.startsWith('#/videos') || window.location.hash === '';
+    const isImages = window.location.hash.startsWith('#/images');
     const isEncrypt = window.location.hash.startsWith('#/encrypt');
     const isContactUs = window.location.hash.startsWith('#/contactus');
     const [publishSelected, setPublishSelected] = useState(isPublish);
     const [videosSelected, setVideosSelected] = useState(isVideos);
+    const [imagesSelected, setImagesSelected] = useState(isImages);
     const [encryptSelected, setEncryptSelected] = useState(isEncrypt);
     const [contactUsSelected, setContactUsSelected] = useState(isContactUs);
 
@@ -81,6 +84,12 @@ export default function Main() {
     }
     else if (videosSelected && !isVideos) {
         setVideosSelected(false);
+    }
+    if (!imagesSelected && isImages) {
+        setImagesSelected(true);
+    }
+    else if (imagesSelected && !isImages) {
+        setImagesSelected(false);
     }
     if (!encryptSelected && isEncrypt) {
         setEncryptSelected(true);
@@ -132,6 +141,9 @@ export default function Main() {
         if (name === "Publish") {
             path = '/publish';
         }
+        else if (name === "Photos") {
+            path = "/images/browse";
+        }
         else if (name === "Encrypt Videos") {
             path = '/encrypt';
         }
@@ -152,6 +164,10 @@ export default function Main() {
                     <ListItem button selected={videosSelected} onClick={() => { navigateContent("Videos") }}>
                         <MovieIcon style={{ paddingRight: 5 }} />
                         <ListItemText primary={"Videos"} />
+                    </ListItem>
+                    <ListItem button selected={imagesSelected} onClick={() => { navigateContent("Photos") }}>
+                        <MovieIcon style={{ paddingRight: 5 }} />
+                        <ListItemText primary={"Photos"} />
                     </ListItem>
                     <ListItem button selected={publishSelected} onClick={() => { navigateContent("Publish") }}>
                         <PublishIcon style={{ paddingRight: 5 }} />
@@ -272,6 +288,9 @@ export default function Main() {
                             </Route>
                             <Route path="/videos/browse">
                                 <BrowseVideos />
+                            </Route>
+                            <Route path="/images/browse">
+                                <BrowseImages />
                             </Route>
                             <Route path="/publish/:id">
                                 <PublishVideo />

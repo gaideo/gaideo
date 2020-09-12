@@ -8,7 +8,7 @@ import MoreVertIcon from '@material-ui/icons/MoreVert';
 import { useHistory } from 'react-router-dom';
 import { loadBrowseEntry, deleteVideoEntry } from '../../utilities/data-utils';
 import ConfirmDialog from '../confirm-dialog/ConfirmDialog';
-import { VideoEntry } from '../../models/video-entry';
+import { MediaEntry, MediaType } from '../../models/media-entry';
 import { trackPromise } from 'react-promise-tracker';
 
 const options = [
@@ -25,6 +25,7 @@ export function BrowseVideos() {
     const [browseEntries, setBrowseEntries] = React.useState(new Array<BrowseEntry>());
     const history = useHistory();
     const [confirmOpen, setConfirmOpen] = React.useState(false);
+    const [menuMediaEntry, setMenuMediaEntry] = React.useState<MediaEntry | null>(null);
     const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
     const open = Boolean(anchorEl);
 
@@ -33,11 +34,21 @@ export function BrowseVideos() {
         const refresh = async () => {
             const indexes: string[] = [];
             let arr: BrowseEntry[] = [];
+/*            let deleteme: string[] = [];
+            await userSession?.listFiles((name: string) => {
+                deleteme.push(name);
+                return true;
+            });
+            for (let i=0; i<deleteme.length; i++) {
+                await userSession?.deleteFile(deleteme[i], {
+                    wasSigned: false
+                })
+            }*/
             userSession?.listFiles((name: string) => {
                 if (name.startsWith("videos/")
                     && name.endsWith(".index")) {
                     indexes.push(name);
-                    loadBrowseEntry(userSession, name, true).then((x: any) => {
+                    loadBrowseEntry(userSession, name, true, MediaType.Video).then((x: any) => {
                         let be = x as BrowseEntry;
                         if (be) {
                             arr.push(be)
@@ -57,18 +68,19 @@ export function BrowseVideos() {
     const deleteConfirmResult = (item: any, result: boolean) => {
         setConfirmOpen(false);
         if (result) {
-            let videoEntry: VideoEntry = item as VideoEntry;
-            if (videoEntry) {
-                trackPromise(deleteVideoEntry(videoEntry, userSession).then(x => { history.push("/") }))
+            let mediaEntry: MediaEntry = item as MediaEntry;
+            if (mediaEntry) {
+                trackPromise(deleteVideoEntry(mediaEntry, userSession).then(x => { history.go(0) }))
             }
         }
     }
 
     const navVideo = (browseEntry: BrowseEntry) => {
-        history.push(`/videos/show/${browseEntry.videoEntry.id}`)
+        history.push(`/videos/show/${browseEntry.mediaEntry.id}`)
     }
 
-    const handleClick = (event: React.MouseEvent<HTMLElement>) => {
+    const handleClick = (event: React.MouseEvent<HTMLElement>, mediaEntry: MediaEntry) => {
+        setMenuMediaEntry(mediaEntry);
         setAnchorEl(event.currentTarget);
     };
 
@@ -76,16 +88,15 @@ export function BrowseVideos() {
         setAnchorEl(null);
     }
 
-    const handleMenu = (option: string, videoEntry: VideoEntry | null) => {
+    const handleMenu = (option: string) => {
         if (option === 'Delete') {
-            if (videoEntry) {
-                console.log('open confirm');
+            if (menuMediaEntry) {
                 setConfirmOpen(true);
             }
         }
         if (option === 'Edit') {
-            if (videoEntry) {
-                history.push(`/publish/${videoEntry.id}`);
+            if (menuMediaEntry) {
+                history.push(`/publish/${menuMediaEntry.id}`);
             }
         }
         handleClose();
@@ -93,21 +104,21 @@ export function BrowseVideos() {
 
     return (
         <Fragment>
+            <ConfirmDialog open={confirmOpen} item={menuMediaEntry} onResult={deleteConfirmResult} title="Confirm Delete" message={`Are you sure you want to delete ${menuMediaEntry?.title}?`} />
             <Toolbar style={{ flexWrap: 'wrap' }}>
                 {browseEntries.map(x => (
-                    <div key={x.videoEntry.id}>
-                        <ConfirmDialog open={confirmOpen} item={x.videoEntry} onResult={deleteConfirmResult} title="Confirm Delete" message={`Are you sure you want to delete ${x.videoEntry.title}?`} />
+                    <div key={x.mediaEntry.id}>
                         <div style={{ width: 331, height: 200, cursor: 'pointer' }} onClick={() => { navVideo(x); }}>
-                            <img id={x.videoEntry.id} alt={x.videoEntry.title} src={`data:image/png;base64, ${x.previewImage}`} />
+                            <img id={x.mediaEntry.id} alt={x.mediaEntry.title} src={`data:image/png;base64, ${x.previewImage}`} />
                         </div>
                         <Toolbar style={{ justifyContent: 'space-between' }}>
                             <div onClick={() => { navVideo(x) }}>
-                                <Typography variant="caption">{`${x.videoEntry?.title} (${x.age})`}</Typography>
+                                <Typography variant="caption">{`${x.mediaEntry?.title} (${x.age})`}</Typography>
                             </div>
                             <div>
                                 <IconButton
                                     style={{ minWidth: 30, outline: 'none' }}
-                                    onClick={handleClick}
+                                    onClick={(e) => handleClick(e, x.mediaEntry)}
                                 >
                                     <MoreVertIcon />
                                 </IconButton>
@@ -125,7 +136,7 @@ export function BrowseVideos() {
                                     }}
                                 >
                                     {options.map((option) => (
-                                        <MenuItem key={option} selected={option === 'Edit'} onClick={() => handleMenu(option, x.videoEntry)}>
+                                        <MenuItem key={option} selected={option === 'Edit'} onClick={() => handleMenu(option)}>
                                             {option}
                                         </MenuItem>
                                     ))}

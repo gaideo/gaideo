@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { useConnect } from '@blockstack/connect';
 import Hls from "hls.js";
-import "../browse-videos/BrowseVideos.css";
+import "../browse/BrowseVideos.css";
 import { useParams, useHistory } from 'react-router-dom';
 import { VideoDescription } from './VideoDescription';
 import { useWindowSize } from '../../effects/size-effect';
@@ -10,10 +10,12 @@ interface VideoPlayerContext {
   current: any;
 }
 
+interface ParamTypes {   id: string; } 
+
 export function VideoPlayer() {
   const { authOptions } = useConnect();
   const { userSession } = authOptions;
-  const { id } = useParams();
+  const  {id} = useParams<ParamTypes>();
   const history = useHistory();
 
   const context: VideoPlayerContext = {
