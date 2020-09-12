@@ -21,15 +21,14 @@ const drawerWidth = 240;
 const useStyles = makeStyles((theme) => ({
     drawer: {
         maxWidth: drawerWidth,
-        width: drawerWidth,
         flexShrink: 0,
     },
     toolbar: theme.mixins.toolbar,
     content: {
         flexGrow: 1,
         padding: theme.spacing(3),
-        [theme.breakpoints.up('sm')]: {
-            marginLeft: 250,
+        [theme.breakpoints.up('md')]: {
+            marginLeft: 150,
         },
     },
     title: {
@@ -199,7 +198,7 @@ export default function Main() {
                 }
 
                 <Toolbar style={{ justifyContent: 'space-between' }}>
-                    <Hidden smUp implementation="css">
+                    <Hidden mdUp implementation="css">
                         <IconButton
                             color="inherit"
                             aria-label="open drawer"
@@ -209,6 +208,7 @@ export default function Main() {
                         </IconButton>
                         {userSession?.isUserSignedIn() &&
                             <Drawer
+                                style={{width: state ? drawerWidth : 0}}
                                 classes={{
                                     paper: classes.drawer,
                                 }}
@@ -222,7 +222,7 @@ export default function Main() {
                             Welcome to Gaideo
                         </Typography>
                     </Hidden>
-                    <Hidden xsDown implementation="css">
+                    <Hidden smDown implementation="css">
                         {userSession?.isUserSignedIn() &&
                             <Drawer
                                 classes={{
