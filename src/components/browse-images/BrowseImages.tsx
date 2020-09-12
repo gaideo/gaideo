@@ -3,18 +3,20 @@ import { useConnect } from '@blockstack/connect';
 import { Box } from '@material-ui/core';
 import { BrowseEntry } from '../../models/browse-entry';
 import { useHistory } from 'react-router-dom';
-import { loadBrowseEntry } from '../../utilities/data-utils';
+import { deleteImageEntry, loadBrowseEntry } from '../../utilities/data-utils';
 import Gallery from 'react-photo-gallery';
 import SelectedImage from './SelectedImage';
 import { Photo } from '../../models/photo';
-import { MediaType } from '../../models/media-entry';
+import { MediaEntry, MediaType } from '../../models/media-entry';
 import { SlideShow } from './SlideShow';
+import { trackPromise } from 'react-promise-tracker';
 
 export function BrowseImages() {
     const { authOptions } = useConnect();
     const { userSession } = authOptions;
     const [photos, setPhotos] = React.useState(new Array<Photo>());
     const [slideShowIndex, setSlideShowIndex] = React.useState<number | null>(null);
+    const [isSelectable, setIsSelectable] = React.useState(false);
     const history = useHistory();
 
     useEffect(() => {
@@ -34,7 +36,8 @@ export function BrowseImages() {
                                 width: 4,
                                 height: 3,
                                 title: be.mediaEntry.title,
-                                src: `data:image/png;base64, ${be.previewImage}`
+                                src: `data:image/png;base64, ${be.previewImage}`,
+                                selected: false
                             }
                             arr.push(photo)
                             setPhotos(arr.slice());
@@ -60,10 +63,16 @@ export function BrowseImages() {
             }
         }
         if (index >= 0) {
-            setSlideShowIndex(index);
+            if (isSelectable) {
+                photos[index].selected = !photos[index].selected;
+                setPhotos(photos.slice());
+            }
+            else {
+                setSlideShowIndex(index);
+            }
         }
 
-    }, [photos]);
+    }, [photos, isSelectable]);
 
     const deletePhotoCallback = useCallback((photo: Photo) => {
         let index = -1;
@@ -84,25 +93,58 @@ export function BrowseImages() {
         setSlideShowIndex(null);
     }, []);
 
+    const toggleSelectionCallback = useCallback(() => {
+        const s = !isSelectable;
+        setIsSelectable(s);
+        if (!s) {
+            let newPhotos = photos.slice();
+            for (let i=0; i<newPhotos.length; i++) {
+                newPhotos[i].selected = false;
+            }
+            setPhotos(newPhotos);
+        }
+    }, [isSelectable, photos]);
+
+    const deleteSelectedCallback = useCallback(() => {
+        const removeSelectedImages = async (arr: MediaEntry[]) =>
+        {
+            for (let j=0; j<arr.length; j++) {
+                await deleteImageEntry(arr[j], userSession);
+            }
+            history.go(0);
+        }
+        const removeArray: MediaEntry[] = [];
+        for (let i=0; i<photos.length; i++) {
+            if (photos[i].selected) {
+                removeArray.push(photos[i].browseEntry.mediaEntry);
+            }
+        }
+        if (removeArray.length > 0) {
+            trackPromise(removeSelectedImages(removeArray));
+        }
+    }, [history, photos, userSession]);
+
     const imageRenderer = useCallback(
         ({ index, left, top, key, photo }) => (
             <Box key={photo.browseEntry.mediaEntry.id}>
                 <SelectedImage
                     direction={"row"}
-                    selected={false}
+                    selected={photo.selected}
                     key={key}
                     margin={"2px"}
                     index={index}
                     photo={photo}
                     left={left}
                     top={top}
-                    selectable={false}
+                    selectable={isSelectable}
                     deleteCallback={deletePhotoCallback}
                     selectImageCallback={selectImageCallback}
+                    toggleSelectionCallback={toggleSelectionCallback}
+                    deleteSelectedCallback={deleteSelectedCallback}
                 />
             </Box>
         ),
-        [deletePhotoCallback, selectImageCallback]
+        [deletePhotoCallback, selectImageCallback, toggleSelectionCallback, isSelectable, deleteSelectedCallback]
 
     );
 

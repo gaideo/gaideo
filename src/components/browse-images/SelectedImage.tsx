@@ -19,7 +19,8 @@ interface CheckmarkProps {
 const options = [
   'Share',
   'Edit',
-  'Delete'
+  'Delete',
+  'Select'
 ];
 
 const ITEM_HEIGHT = 48;
@@ -74,6 +75,14 @@ interface SelectImageCallback {
   (photo: Photo): void
 }
 
+interface ToggleSelectionCallback {
+  (): void
+}
+
+interface DeleteSelectedCallback {
+  (): void
+}
+
 export interface SelectedImageProps {
   index: number,
   photo: Photo,
@@ -84,7 +93,9 @@ export interface SelectedImageProps {
   selected: boolean,
   selectable: boolean,
   deleteCallback: DeletePhotoCallback,
-  selectImageCallback: SelectImageCallback
+  selectImageCallback: SelectImageCallback,
+  toggleSelectionCallback: ToggleSelectionCallback
+  deleteSelectedCallback: DeleteSelectedCallback
 }
 
 const SelectedImage = (props: SelectedImageProps) => {
@@ -101,11 +112,16 @@ const SelectedImage = (props: SelectedImageProps) => {
   const deleteConfirmResult = (item: any, result: boolean) => {
     setConfirmOpen(false);
     if (result) {
-      let mediaEntry: MediaEntry = item as MediaEntry;
-      if (mediaEntry) {
-        trackPromise(deleteImageEntry(mediaEntry, userSession).then(x => { 
-          props.deleteCallback(props.photo);
-        }))
+      if (props.selectable) {
+        props.deleteSelectedCallback();
+      }
+      else {
+        let mediaEntry: MediaEntry = item as MediaEntry;
+        if (mediaEntry) {
+          trackPromise(deleteImageEntry(mediaEntry, userSession).then(x => {
+            props.deleteCallback(props.photo);
+          }))
+        }
       }
     }
   }
@@ -129,10 +145,13 @@ const SelectedImage = (props: SelectedImageProps) => {
         setConfirmOpen(true);
       }
     }
-    if (option === 'Edit') {
+    else if (option === 'Edit') {
       if (menuMediaEntry) {
         history.push(`/publish/${menuMediaEntry.id}`);
       }
+    }
+    else if (option.startsWith('Select')) {
+      props.toggleSelectionCallback();
     }
     handleClose();
   };
@@ -152,12 +171,10 @@ const SelectedImage = (props: SelectedImageProps) => {
     if (props.selectable) {
       setIsSelected(!isSelected);
     }
-    else {
-      props.selectImageCallback(props.photo);
-    }
+    props.selectImageCallback(props.photo);
   };
 
-  function createPhoto(photo: Photo) : any{
+  function createPhoto(photo: Photo): any {
     return {
       src: photo.src,
       title: photo.title,
@@ -170,10 +187,22 @@ const SelectedImage = (props: SelectedImageProps) => {
     setIsSelected(props.selected);
   }, [props.selected]);
 
+  const getMenuOption = (option: string) => {
+    if (option.startsWith("Select")) {
+      if (props.selectable) {
+        return "Select Off";
+      }
+      else {
+        return "Select On";
+      }
+    }
+    return option
+  }
+
   return (
     <Box>
       <div
-        style={{maxHeight:600, maxWidth: 800, margin: props.margin, height: props.photo.height, width: props.photo.width, ...cont }}
+        style={{ maxHeight: 600, maxWidth: 800, margin: props.margin, height: props.photo.height, width: props.photo.width, ...cont }}
         className={!isSelected ? "not-selected" : ""}
       >
         <ConfirmDialog open={confirmOpen} item={menuMediaEntry} onResult={deleteConfirmResult} title="Confirm Delete" message={`Are you sure you want to delete ${menuMediaEntry?.title}?`} />
@@ -214,8 +243,8 @@ const SelectedImage = (props: SelectedImageProps) => {
             }}
           >
             {options.map((option) => (
-              <MenuItem key={option} selected={option === 'Edit'} onClick={() => handleMenu(option)}>
-                {option}
+              <MenuItem key={option} onClick={() => handleMenu(option)}>
+                {getMenuOption(option)}
               </MenuItem>
             ))}
           </Menu>
