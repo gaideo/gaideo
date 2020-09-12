@@ -1,6 +1,6 @@
 import React, { useEffect, Fragment, useCallback } from 'react';
 import { useConnect } from '@blockstack/connect';
-import { Box } from '@material-ui/core';
+import { Box, Button } from '@material-ui/core';
 import { BrowseEntry } from '../../models/browse-entry';
 import { useHistory } from 'react-router-dom';
 import { deleteImageEntry, loadBrowseEntry } from '../../utilities/data-utils';
@@ -11,13 +11,22 @@ import { MediaEntry, MediaType } from '../../models/media-entry';
 import { SlideShow } from './SlideShow';
 import { trackPromise } from 'react-promise-tracker';
 
-export function BrowseImages() {
+interface ImagesLoadedCallback {
+    (photos: Photo[]): void
+}
+
+interface BrowseImagesProps {
+    photos: Photo[];
+    imagesLoadedCallback: ImagesLoadedCallback;
+}
+
+export function BrowseImages(props: BrowseImagesProps) {
     const { authOptions } = useConnect();
     const { userSession } = authOptions;
-    const [photos, setPhotos] = React.useState(new Array<Photo>());
     const [slideShowIndex, setSlideShowIndex] = React.useState<number | null>(null);
     const [isSelectable, setIsSelectable] = React.useState(false);
     const history = useHistory();
+    const MAX_MORE = 6;
 
     useEffect(() => {
 
@@ -40,54 +49,94 @@ export function BrowseImages() {
                                 selected: false
                             }
                             arr.push(photo)
-                            setPhotos(arr.slice());
+                            props.imagesLoadedCallback(arr.slice())
                         }
                     })
-                    if (indexes.length >= 20) {
+                    if (indexes.length >= MAX_MORE) {
                         return false;
                     }
                 }
                 return true;
             })
         }
-        refresh();
-    }, [userSession, history]);
+        if (props.photos.length === 0) {
+            refresh();
+        }
+    }, [userSession, history, props]);
 
+    const loadMore = () => {
+        const indexes: string[] = [];
+        let arr: Photo[] = props.photos;
+        userSession?.listFiles((name: string) => {
+            if (name.startsWith("images/")
+                && name.endsWith(".index")) {
+                let found = false;
+                for (let i = 0; i < props.photos.length; i++) {
+                    let indexFile = `images/${props.photos[i].browseEntry.mediaEntry.id}.index`;
+                    if (indexFile === name) {
+                        found = true;
+                    }
+                }
+                if (!found) {
+                    indexes.push(name);
+                    loadBrowseEntry(userSession, name, true, MediaType.Images).then((x: any) => {
+                        let be = x as BrowseEntry;
+                        if (be) {
+                            let photo: Photo = {
+                                browseEntry: be,
+                                width: 4,
+                                height: 3,
+                                title: be.mediaEntry.title,
+                                src: `data:image/png;base64, ${be.previewImage}`,
+                                selected: false
+                            }
+                            arr.push(photo)
+                            props.imagesLoadedCallback(arr.slice());
+                        }
+                    })
+                }
+                if (indexes.length >= MAX_MORE) {
+                    return false;
+                }
+            }
+            return true;
+        })
+    }
 
     const selectImageCallback = useCallback((photo: Photo) => {
         let index = -1;
-        for (let i = 0; i < photos.length; i++) {
-            if (photos[i].browseEntry.mediaEntry.id === photo.browseEntry.mediaEntry.id) {
+        for (let i = 0; i < props.photos.length; i++) {
+            if (props.photos[i].browseEntry.mediaEntry.id === photo.browseEntry.mediaEntry.id) {
                 index = i;
                 break;
             }
         }
         if (index >= 0) {
             if (isSelectable) {
-                photos[index].selected = !photos[index].selected;
-                setPhotos(photos.slice());
+                props.photos[index].selected = !props.photos[index].selected;
+                props.imagesLoadedCallback(props.photos.slice());
             }
             else {
                 setSlideShowIndex(index);
             }
         }
 
-    }, [photos, isSelectable]);
+    }, [props, isSelectable]);
 
     const deletePhotoCallback = useCallback((photo: Photo) => {
         let index = -1;
-        for (let i = 0; i < photos.length; i++) {
-            if (photos[i].browseEntry.mediaEntry.id === photo.browseEntry.mediaEntry.id) {
+        for (let i = 0; i < props.photos.length; i++) {
+            if (props.photos[i].browseEntry.mediaEntry.id === photo.browseEntry.mediaEntry.id) {
                 index = i;
                 break;
             }
         }
         if (index >= 0) {
-            let newPhotos = photos.slice();
+            let newPhotos = props.photos.slice();
             newPhotos.splice(index, 1);
-            setPhotos(newPhotos);
+            props.imagesLoadedCallback(newPhotos);
         }
-    }, [photos]);
+    }, [props]);
 
     const closeSlideshowCallback = useCallback(() => {
         setSlideShowIndex(null);
@@ -97,32 +146,31 @@ export function BrowseImages() {
         const s = !isSelectable;
         setIsSelectable(s);
         if (!s) {
-            let newPhotos = photos.slice();
-            for (let i=0; i<newPhotos.length; i++) {
+            let newPhotos = props.photos.slice();
+            for (let i = 0; i < newPhotos.length; i++) {
                 newPhotos[i].selected = false;
             }
-            setPhotos(newPhotos);
+            props.imagesLoadedCallback(newPhotos);
         }
-    }, [isSelectable, photos]);
+    }, [isSelectable, props]);
 
     const deleteSelectedCallback = useCallback(() => {
-        const removeSelectedImages = async (arr: MediaEntry[]) =>
-        {
-            for (let j=0; j<arr.length; j++) {
+        const removeSelectedImages = async (arr: MediaEntry[]) => {
+            for (let j = 0; j < arr.length; j++) {
                 await deleteImageEntry(arr[j], userSession);
             }
             history.go(0);
         }
         const removeArray: MediaEntry[] = [];
-        for (let i=0; i<photos.length; i++) {
-            if (photos[i].selected) {
-                removeArray.push(photos[i].browseEntry.mediaEntry);
+        for (let i = 0; i < props.photos.length; i++) {
+            if (props.photos[i].selected) {
+                removeArray.push(props.photos[i].browseEntry.mediaEntry);
             }
         }
         if (removeArray.length > 0) {
             trackPromise(removeSelectedImages(removeArray));
         }
-    }, [history, photos, userSession]);
+    }, [history, props.photos, userSession]);
 
     const imageRenderer = useCallback(
         ({ index, left, top, key, photo }) => (
@@ -151,13 +199,20 @@ export function BrowseImages() {
     return (
         <Fragment>
             { slideShowIndex != null ? (
-                <SlideShow 
-                    images={photos} 
-                    current={slideShowIndex} 
-                    closeSlideshowCallback={closeSlideshowCallback}/>
+                <SlideShow
+                    images={props.photos}
+                    current={slideShowIndex}
+                    closeSlideshowCallback={closeSlideshowCallback} />
             ) : (
-                <Gallery photos={photos} renderImage={imageRenderer} />
-            )}
+                    <div>
+                        <Gallery photos={props.photos} renderImage={imageRenderer} />
+                        {props.photos.length >= MAX_MORE &&
+                            <div style={{ display: 'flex', justifyContent: 'center' }}>
+                                <Button onClick={loadMore}>Show More</Button>
+                            </div>
+                        }
+                    </div>
+                )}
         </Fragment>
     );
 }

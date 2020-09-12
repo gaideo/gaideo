@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { makeStyles, Divider, List, ListItem, ListItemText, AppBar, Toolbar, Drawer, Typography, Hidden, IconButton, Button, Menu, MenuItem, CircularProgress, Backdrop } from "@material-ui/core";
 import MenuIcon from '@material-ui/icons/MenuOutlined';
 import PublishIcon from '@material-ui/icons/PublishOutlined';
 import MovieIcon from '@material-ui/icons/MovieOutlined';
 import EncryptIcon from '@material-ui/icons/EnhancedEncryptionOutlined';
 import ContactIcon from '@material-ui/icons/ContactMailOutlined';
+import CameraEnhanceOutlinedIcon from '@material-ui/icons/CameraEnhanceOutlined';
 import { useConnect } from '@blockstack/connect';
 import { UserData } from 'blockstack/lib/auth/authApp';
 import AccountCircle from '@material-ui/icons/AccountCircle';
@@ -16,6 +17,8 @@ import PublishVideo from '../publish-media/PublishMedia';
 import { VideoEncryption } from '../video-encryption/VideoEncryption';
 import { ContactUs } from '../contact-us/ContactUs';
 import { BrowseImages } from '../browse-images/BrowseImages';
+import { Photo } from '../../models/photo';
+import { BrowseEntry } from '../../models/browse-entry';
 
 const drawerWidth = 240;
 const useStyles = makeStyles((theme) => ({
@@ -71,6 +74,8 @@ export default function Main() {
     const [imagesSelected, setImagesSelected] = useState(isImages);
     const [encryptSelected, setEncryptSelected] = useState(isEncrypt);
     const [contactUsSelected, setContactUsSelected] = useState(isContactUs);
+    const [photos, setPhotos] = useState(new Array<Photo>());
+    const [videos, setVideos] = useState(new Array<BrowseEntry>());
 
     if (!publishSelected && isPublish) {
         setPublishSelected(true);
@@ -155,6 +160,14 @@ export default function Main() {
         }
     }
 
+    const imagesLoadedCallback = useCallback((photos: Photo[]) => {
+        setPhotos(photos);
+    }, []);
+
+    const videosLoadedCallback = useCallback((videos: BrowseEntry[]) => {
+        setVideos(videos);
+    }, []);
+
     const drawer = (
         <div>
             <div>
@@ -165,7 +178,7 @@ export default function Main() {
                         <ListItemText primary={"Videos"} />
                     </ListItem>
                     <ListItem button selected={imagesSelected} onClick={() => { navigateContent("Photos") }}>
-                        <MovieIcon style={{ paddingRight: 5 }} />
+                        <CameraEnhanceOutlinedIcon style={{ paddingRight: 5 }} />
                         <ListItemText primary={"Photos"} />
                     </ListItem>
                     <ListItem button selected={publishSelected} onClick={() => { navigateContent("Publish") }}>
@@ -287,10 +300,10 @@ export default function Main() {
                                 <VideoPlayer />
                             </Route>
                             <Route path="/videos/browse">
-                                <BrowseVideos />
+                                <BrowseVideos videos={videos} videosLoadedCallback={videosLoadedCallback} />
                             </Route>
                             <Route path="/images/browse">
-                                <BrowseImages />
+                                <BrowseImages photos={photos} imagesLoadedCallback={imagesLoadedCallback}/>
                             </Route>
                             <Route path="/publish/:id">
                                 <PublishVideo />
