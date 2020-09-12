@@ -11,11 +11,11 @@ import AccountCircle from '@material-ui/icons/AccountCircle';
 import { useHistory, Route, Switch, Redirect, useRouteMatch } from 'react-router-dom';
 import { usePromiseTracker } from 'react-promise-tracker';
 import { VideoPlayer } from '../video-player/VideoPlayer';
-import { BrowseVideos } from '../browse/BrowseVideos';
+import { BrowseVideos } from '../browse-videos/BrowseVideos';
 import PublishVideo from '../publish-media/PublishMedia';
 import { VideoEncryption } from '../video-encryption/VideoEncryption';
 import { ContactUs } from '../contact-us/ContactUs';
-import { BrowseImages } from '../browse/BrowseImages';
+import { BrowseImages } from '../browse-images/BrowseImages';
 
 const drawerWidth = 240;
 const useStyles = makeStyles((theme) => ({

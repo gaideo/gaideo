@@ -70,6 +70,10 @@ interface DeletePhotoCallback {
   (photo: Photo): void
 }
 
+interface SelectImageCallback {
+  (photo: Photo): void
+}
+
 export interface SelectedImageProps {
   index: number,
   photo: Photo,
@@ -79,7 +83,8 @@ export interface SelectedImageProps {
   left: string,
   selected: boolean,
   selectable: boolean,
-  deleteCallback: DeletePhotoCallback
+  deleteCallback: DeletePhotoCallback,
+  selectImageCallback: SelectImageCallback
 }
 
 const SelectedImage = (props: SelectedImageProps) => {
@@ -146,6 +151,9 @@ const SelectedImage = (props: SelectedImageProps) => {
   const handleOnClick = () => {
     if (props.selectable) {
       setIsSelected(!isSelected);
+    }
+    else {
+      props.selectImageCallback(props.photo);
     }
   };
 

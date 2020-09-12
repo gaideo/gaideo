@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { useConnect } from '@blockstack/connect';
 import Hls from "hls.js";
-import "../browse/BrowseVideos.css";
+import "../browse-videos/BrowseVideos.css";
 import { useParams, useHistory } from 'react-router-dom';
 import { VideoDescription } from './VideoDescription';
 import { useWindowSize } from '../../effects/size-effect';

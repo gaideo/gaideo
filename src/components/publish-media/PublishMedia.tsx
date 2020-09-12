@@ -415,7 +415,7 @@ export default function PublishVideo() {
                     sign: true,
                     wasString: true
                 });
-                if (mediaType == MediaType.Images) {
+                if (mediaType === MediaType.Images) {
                     history.push('/images/browse');
                 }
                 else {
