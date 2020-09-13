@@ -296,7 +296,7 @@ export default function Main() {
                 </Toolbar>
             </AppBar>
 
-            <div className={classes.content}>
+            <div className={classes.content} style={{marginLeft: welcomeRoute ? 0 : 150}}>
                 <div style={{ paddingTop: 60, paddingLeft: 0, paddingRight: 0 }}>
                     <Switch>
                     {userSession?.isUserSignedIn() ? (

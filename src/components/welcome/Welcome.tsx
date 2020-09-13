@@ -3,8 +3,8 @@ import { Typography, Link, Box, Paper } from '@material-ui/core';
 
 export function Welcome() {
     return (        
-        <Box style={{marginLeft: '10%', marginRight: '20%', color: 'white'}}>
-            <Paper style={{padding: 20}}>
+        <Box style={{marginLeft: '5%', marginRight: '5%', color: 'white'}}>
+            <Paper style={{padding: 20, marginBottom: 30}}>
 
             <Typography variant="h5" paragraph>Background</Typography>
             <Typography variant="subtitle1" paragraph>
@@ -14,6 +14,8 @@ export function Welcome() {
                 Unfortunately, the price of that knowledge came at a hidden cost. 
                 Before we knew the cost it was too late and our information became a commodity that big businesses could exploit to make money at our expense. The choices given to us up until this point has been trading one big company to store and control our data with another.
             </Typography>
+            </Paper>
+            <Paper style={{padding: 20, marginBottom: 30}}>
             <Typography variant="h5" paragraph>The Mission</Typography>
             <Typography variant="subtitle1" paragraph>
                 Gaideo is a mission to incorporate all of the good things about social media. Community. Sharing. Learning. Creativity. 
@@ -21,12 +23,16 @@ export function Welcome() {
                 We need to start with a platform that respects the rights of each individual to own their data, and allow them to control exactly how it will be shared with the rest of the world. 
                 Security is a first-class concept to protect all user's data by default without having to change a hidden setting.
             </Typography>
+            </Paper>
+            <Paper style={{padding: 20, marginBottom: 30}}>
             <Typography variant="h5" paragraph>No Secrets</Typography>
             <Typography variant="subtitle1" paragraph>
                 All of the <Link href="https://github.com/gaideo/gaideo">source code</Link> used to produce gaideo.com is open source. 
                 There are no secrets about how your data is being stored and accessed. 
                 The backbone of all the data storage is built on <Link href="https://github.com/blockstack/gaia">Blockstack's Gaia technology</Link>, an open source blockchain with a storage system that encrypts each user's data, and allows them to control both the content and its location at any time.
             </Typography>
+            </Paper>
+            <Paper style={{padding: 20, marginBottom: 30}}>
             <Typography variant="h5" paragraph>The Pledge</Typography>
             <Typography variant="subtitle1" paragraph>
                 We will not charge you money for this site. 
