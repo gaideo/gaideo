@@ -36,6 +36,7 @@ export function BrowseVideos(props: BrowseVideosProps) {
     const [menuMediaEntry, setMenuMediaEntry] = React.useState<MediaEntry | null>(null);
     const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
     const open = Boolean(anchorEl);
+    const [loadingMore, setLoadingMore] = React.useState(false);
 
     const MAX_MORE = 6;
 
@@ -78,35 +79,41 @@ export function BrowseVideos(props: BrowseVideosProps) {
         }
     }, [userSession, history, props]);
 
-    const loadMore = () => {
-        const indexes: string[] = [];
-        let arr: BrowseEntry[] = props.videos;
-        userSession?.listFiles((name: string) => {
-            if (name.startsWith("videos/")
-                && name.endsWith(".index")) {
-                let found = false;
-                for (let i = 0; i < props.videos.length; i++) {
-                    let indexFile = `videos/${props.videos[i].mediaEntry.id}.index`;
-                    if (indexFile === name) {
-                        found = true;
+    const loadMore = async () => {
+        try {
+            setLoadingMore(true)
+            const indexes: string[] = [];
+            let arr: BrowseEntry[] = props.videos;
+            await userSession?.listFiles((name: string) => {
+                if (name.startsWith("videos/")
+                    && name.endsWith(".index")) {
+                    let found = false;
+                    for (let i = 0; i < props.videos.length; i++) {
+                        let indexFile = `videos/${props.videos[i].mediaEntry.id}.index`;
+                        if (indexFile === name) {
+                            found = true;
+                        }
+                    }
+                    if (!found) {
+                        indexes.push(name);
+                        loadBrowseEntry(userSession, name, true, MediaType.Video).then((x: any) => {
+                            let be = x as BrowseEntry;
+                            if (be) {
+                                arr.push(be);
+                                props.videosLoadedCallback(arr.slice())
+                            }
+                        })
+                    }
+                    if (indexes.length >= MAX_MORE) {
+                        return false;
                     }
                 }
-                if (!found) {
-                    indexes.push(name);
-                    loadBrowseEntry(userSession, name, true, MediaType.Video).then((x: any) => {
-                        let be = x as BrowseEntry;
-                        if (be) {
-                            arr.push(be);
-                            props.videosLoadedCallback(arr.slice())
-                        }
-                    })
-                }
-                if (indexes.length >= MAX_MORE) {
-                    return false;
-                }
-            }
-            return true;
-        })
+                return true;
+            })
+        }
+        finally {
+            setLoadingMore(false);
+        }
     }
 
     const deleteConfirmResult = (item: any, result: boolean) => {
@@ -192,7 +199,7 @@ export function BrowseVideos(props: BrowseVideosProps) {
             </Toolbar>
             {props.videos.length >= MAX_MORE &&
                 <div style={{ display: 'flex', justifyContent: 'center' }}>
-                    <Button onClick={loadMore}>Show More</Button>
+                    <Button disabled={loadingMore} onClick={loadMore}>Show More</Button>
                 </div>
             }
         </Fragment>

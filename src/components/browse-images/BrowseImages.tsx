@@ -25,6 +25,7 @@ export function BrowseImages(props: BrowseImagesProps) {
     const { userSession } = authOptions;
     const [slideShowIndex, setSlideShowIndex] = React.useState<number | null>(null);
     const [isSelectable, setIsSelectable] = React.useState(false);
+    const [loadingMore, setLoadingMore] = React.useState(false);
     const history = useHistory();
     const MAX_MORE = 6;
 
@@ -64,43 +65,49 @@ export function BrowseImages(props: BrowseImagesProps) {
         }
     }, [userSession, history, props]);
 
-    const loadMore = () => {
-        const indexes: string[] = [];
-        let arr: Photo[] = props.photos;
-        userSession?.listFiles((name: string) => {
-            if (name.startsWith("images/")
-                && name.endsWith(".index")) {
-                let found = false;
-                for (let i = 0; i < props.photos.length; i++) {
-                    let indexFile = `images/${props.photos[i].browseEntry.mediaEntry.id}.index`;
-                    if (indexFile === name) {
-                        found = true;
+    const loadMore = async () => {
+        try {
+            setLoadingMore(true)
+            const indexes: string[] = [];
+            let arr: Photo[] = props.photos;
+            await userSession?.listFiles((name: string) => {
+                if (name.startsWith("images/")
+                    && name.endsWith(".index")) {
+                    let found = false;
+                    for (let i = 0; i < props.photos.length; i++) {
+                        let indexFile = `images/${props.photos[i].browseEntry.mediaEntry.id}.index`;
+                        if (indexFile === name) {
+                            found = true;
+                        }
+                    }
+                    if (!found) {
+                        indexes.push(name);
+                        loadBrowseEntry(userSession, name, true, MediaType.Images).then((x: any) => {
+                            let be = x as BrowseEntry;
+                            if (be) {
+                                let photo: Photo = {
+                                    browseEntry: be,
+                                    width: 4,
+                                    height: 3,
+                                    title: be.mediaEntry.title,
+                                    src: `data:image/png;base64, ${be.previewImage}`,
+                                    selected: false
+                                }
+                                arr.push(photo)
+                                props.imagesLoadedCallback(arr.slice());
+                            }
+                        })
+                    }
+                    if (indexes.length >= MAX_MORE) {
+                        return false;
                     }
                 }
-                if (!found) {
-                    indexes.push(name);
-                    loadBrowseEntry(userSession, name, true, MediaType.Images).then((x: any) => {
-                        let be = x as BrowseEntry;
-                        if (be) {
-                            let photo: Photo = {
-                                browseEntry: be,
-                                width: 4,
-                                height: 3,
-                                title: be.mediaEntry.title,
-                                src: `data:image/png;base64, ${be.previewImage}`,
-                                selected: false
-                            }
-                            arr.push(photo)
-                            props.imagesLoadedCallback(arr.slice());
-                        }
-                    })
-                }
-                if (indexes.length >= MAX_MORE) {
-                    return false;
-                }
-            }
-            return true;
-        })
+                return true;
+            })
+        }
+        finally {
+            setLoadingMore(false);
+        }
     }
 
     const selectImageCallback = useCallback((photo: Photo) => {
@@ -208,7 +215,7 @@ export function BrowseImages(props: BrowseImagesProps) {
                         <Gallery photos={props.photos} renderImage={imageRenderer} />
                         {props.photos.length >= MAX_MORE &&
                             <div style={{ display: 'flex', justifyContent: 'center' }}>
-                                <Button onClick={loadMore}>Show More</Button>
+                                <Button disabled={loadingMore} onClick={loadMore}>Show More</Button>
                             </div>
                         }
                     </div>
