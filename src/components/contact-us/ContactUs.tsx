@@ -2,7 +2,7 @@ import React from 'react';
 import { Typography, Link, Box, Paper } from '@material-ui/core';
 export function ContactUs() {
     return (        
-        <Box style={{marginLeft: '10%', marginRight: '20%'}}>
+        <Box style={{marginLeft: '5%', marginRight: '5%'}}>
             <Paper style={{padding: 20}}>
             <Typography variant="h5" paragraph>Contact Us</Typography>
             <Typography variant="subtitle1" paragraph>

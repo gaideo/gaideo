@@ -3,7 +3,7 @@ import { Typography, Link, Box, Paper } from '@material-ui/core';
 export function VideoEncryption() {
 
     return (
-        <Box style={{marginLeft: '10%', marginRight: '20%'}}>
+        <Box style={{marginLeft: '5%', marginRight: '5%'}}>
                 <Paper style={{padding: 20}}>
             <Typography variant="h5" paragraph>Encrypt Videos</Typography>
             <Typography variant="subtitle1" paragraph>
