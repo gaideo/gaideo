@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Fragment } from 'react';
 import { makeStyles, Divider, List, ListItem, ListItemText, AppBar, Toolbar, Drawer, Typography, Hidden, IconButton, Button, Menu, MenuItem, CircularProgress, Backdrop } from "@material-ui/core";
 import MenuIcon from '@material-ui/icons/MenuOutlined';
 import PublishIcon from '@material-ui/icons/PublishOutlined';
@@ -19,6 +19,7 @@ import { ContactUs } from '../contact-us/ContactUs';
 import { BrowseImages } from '../browse-images/BrowseImages';
 import { Photo } from '../../models/photo';
 import { BrowseEntry } from '../../models/browse-entry';
+import { Welcome } from '../welcome/Welcome';
 
 const drawerWidth = 240;
 const useStyles = makeStyles((theme) => ({
@@ -63,7 +64,7 @@ export default function Main() {
     const open = Boolean(anchorEl);
     const history = useHistory();
     const { promiseInProgress } = usePromiseTracker();
-    const publishRoute = useRouteMatch("/publish");
+    const welcomeRoute = useRouteMatch("/welcome");
     const isPublish = window.location.hash.startsWith('#/publish');
     const isVideos = window.location.hash.startsWith('#/videos') || window.location.hash === '';
     const isImages = window.location.hash.startsWith('#/images');
@@ -117,7 +118,7 @@ export default function Main() {
 
         }
         refresh();
-    }, [userSession, userData, publishRoute]);
+    }, [userSession, userData, welcomeRoute]);
 
 
     const handleClick = (event: React.MouseEvent<HTMLElement>) => {
@@ -154,7 +155,9 @@ export default function Main() {
         else if (name === "Contact Us") {
             path = '/contactus';
         }
-
+        else if (name === "Welcome") {
+            path = '/welcome';
+        }
         if (history.length > 0 && history.location.pathname !== path) {
             history.push(path);
         }
@@ -201,7 +204,7 @@ export default function Main() {
         </div>
     )
     return (
-        <div>
+        <div style={{backgroundImage: userSession?.isUserSignedIn() ? 'none' : 'url(/welcome.jpg)'}}>
             <AppBar position='fixed'>
                 {
                     promiseInProgress &&
@@ -221,7 +224,7 @@ export default function Main() {
                         </IconButton>
                         {userSession?.isUserSignedIn() &&
                             <Drawer
-                                style={{width: state ? drawerWidth : 0}}
+                                style={{ width: state ? drawerWidth : 0 }}
                                 classes={{
                                     paper: classes.drawer,
                                 }}
@@ -247,7 +250,7 @@ export default function Main() {
                                 {drawer}
                             </Drawer>
                         }
-                        <Typography variant="h6" className={classes.title} style={{ paddingLeft: 250 }}>
+                        <Typography variant="h6" className={classes.title} style={{ paddingLeft: userSession?.isUserSignedIn() ?  250 : 0 }}>
                             Welcome to Gaideo, a secure way to internet
                         </Typography>
                     </Hidden>
@@ -292,37 +295,51 @@ export default function Main() {
                     }
                 </Toolbar>
             </AppBar>
-            {userSession?.isUserSignedIn() &&
-                <div className={classes.content}>
-                    <div style={{ paddingTop: 60, paddingLeft: 0, paddingRight: 0 }}>
-                        <Switch>
-                            <Route path="/videos/show/:id">
-                                <VideoPlayer />
-                            </Route>
-                            <Route path="/videos/browse">
-                                <BrowseVideos videos={videos} videosLoadedCallback={videosLoadedCallback} />
-                            </Route>
-                            <Route path="/images/browse">
-                                <BrowseImages photos={photos} imagesLoadedCallback={imagesLoadedCallback}/>
-                            </Route>
-                            <Route path="/publish/:id">
-                                <PublishVideo />
-                            </Route>
-                            <Route path="/publish">
-                                <PublishVideo />
-                            </Route>
-                            <Route path="/encrypt">
-                                <VideoEncryption />
-                            </Route>
-                            <Route path="/contactus">
-                                <ContactUs />
-                            </Route>
-                            <Route path="/">
-                                <Redirect to="/videos/browse" />
-                            </Route>
-                        </Switch>
-                    </div>                </div>
-            }
+
+            <div className={classes.content}>
+                <div style={{ paddingTop: 60, paddingLeft: 0, paddingRight: 0 }}>
+                    <Switch>
+                    {userSession?.isUserSignedIn() ? (
+                        <Fragment>
+                        <Route path="/videos/show/:id">
+                            <VideoPlayer />
+                        </Route>
+                        <Route path="/videos/browse">
+                            <BrowseVideos videos={videos} videosLoadedCallback={videosLoadedCallback} />
+                        </Route>
+                        <Route path="/images/browse">
+                            <BrowseImages photos={photos} imagesLoadedCallback={imagesLoadedCallback} />
+                        </Route>
+                        <Route path="/publish/:id">
+                            <PublishVideo />
+                        </Route>
+                        <Route path="/publish">
+                            <PublishVideo />
+                        </Route>
+                        <Route path="/encrypt">
+                            <VideoEncryption />
+                        </Route>
+                        <Route path="/contactus">
+                            <ContactUs />
+                        </Route>
+                        <Route path="/">
+                            <Redirect to="/videos/browse" />
+                        </Route>
+                        </Fragment>
+                    ) : (
+                        <Fragment>
+                        <Route path="/welcome">
+                            <Welcome />
+                        </Route>
+                        <Route path="/">
+                            <Redirect to="/welcome" />
+                        </Route>
+                        </Fragment>
+                    )
+                    }
+                    </Switch>
+                </div>
+            </div>
         </div>
     );
 }
