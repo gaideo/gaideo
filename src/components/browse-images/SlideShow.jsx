@@ -1,8 +1,10 @@
 import React, { useEffect } from 'react';
 import 'react-slideshow-image/dist/styles.css'
-import { Zoom } from 'react-slideshow-image';
+import { Slide } from 'react-slideshow-image';
 import CloseIcon from '@material-ui/icons/CloseOutlined';
-import { Box, IconButton } from '@material-ui/core';
+import { Box, Icon, IconButton } from '@material-ui/core';
+import KeyboardArrowRightIcon from '@material-ui/icons/KeyboardArrowRight';
+import KeyboardArrowLeftIcon from '@material-ui/icons/KeyboardArrowLeft';
 
 export function SlideShow(props) {
     const slideRef = React.useRef();
@@ -17,7 +19,8 @@ export function SlideShow(props) {
 
     const zoomInProperties = {
         indicators: true,
-        scale: 1.4
+        scale: 1.4,
+        autoplay: false
     }
 
     return (
@@ -25,12 +28,17 @@ export function SlideShow(props) {
             <IconButton style={{width: 100, alignSelf: 'flex-end'}} onClick={() => { props.closeSlideshowCallback() }}>
                 <CloseIcon/>
             </IconButton>
-            <Zoom ref={slideRef} {...zoomInProperties}>
-                {props.images.map((each, index) => (
-                    <div style={{ height: '80vh', maxWidth: '100%' }} key={index}>
-                        <img style={{ height: '80vh', maxWidth: '100%'}} alt={each.title} src={each.src} />
+            <Slide ref={slideRef} {...zoomInProperties} 
+              prevArrow={(<Icon style={{cursor: 'pointer', paddingRight: 10}}><KeyboardArrowLeftIcon fontSize="large"/></Icon>)}
+              nextArrow={(<Icon style={{cursor: 'pointer', paddingRight: 10}}><KeyboardArrowRightIcon fontSize="large"/></Icon>)}
+              >
+                {props.images.map((each, index) => (    
+                    <div key={index} className="each-slide" style={{marginLeft: 'auto', marginRight: 'auto'}}>
+                    <div style={{'backgroundImage': `url(${props.images[index]})`,marginLeft: 'auto', marginRight: 'auto'}}>
+                    <img style={{ height: '80vh', maxWidth: '100%',marginLeft: 'auto', marginRight: 'auto'}} alt={each.title} src={each.src} />
                     </div>
+                  </div>
                 ))}
-            </Zoom>
+            </Slide>
         </Box>)
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, Fragment } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { makeStyles, Divider, List, ListItem, ListItemText, AppBar, Toolbar, Drawer, Typography, Hidden, IconButton, Button, Menu, MenuItem, CircularProgress, Backdrop } from "@material-ui/core";
 import MenuIcon from '@material-ui/icons/MenuOutlined';
 import PublishIcon from '@material-ui/icons/PublishOutlined';
@@ -299,44 +299,73 @@ export default function Main() {
             <div className={classes.content} style={{marginLeft: welcomeRoute ? 0 : undefined}}>
                 <div style={{ paddingTop: 60, paddingLeft: 0, paddingRight: 0 }}>
                     <Switch>
-                    {userSession?.isUserSignedIn() ? (
-                        <Fragment>
-                        <Route path="/videos/show/:id">
+                    <Route path="/videos/show/:id">
+                        {userSession?.isUserSignedIn() ? (
                             <VideoPlayer />
+                        ) : (
+                            <Welcome />
+                        )
+                        }
                         </Route>
                         <Route path="/videos/browse">
+                        {userSession?.isUserSignedIn() ? (
                             <BrowseVideos videos={videos} videosLoadedCallback={videosLoadedCallback} />
+                            ) : (
+                            <Welcome />
+                        )
+                        }
                         </Route>
                         <Route path="/images/browse">
+                        {userSession?.isUserSignedIn() ? (
                             <BrowseImages photos={photos} imagesLoadedCallback={imagesLoadedCallback} />
+                            ) : (
+                            <Welcome />
+                        )
+                        }
                         </Route>
                         <Route path="/publish/:id">
+                        {userSession?.isUserSignedIn() ? (
                             <PublishVideo />
+                            ) : (
+                            <Welcome />
+                        )
+                        }
                         </Route>
                         <Route path="/publish">
+                        {userSession?.isUserSignedIn() ? (
                             <PublishVideo />
+                            ) : (
+                            <Welcome />
+                        )
+                        }
                         </Route>
                         <Route path="/encrypt">
+                        {userSession?.isUserSignedIn() ? (
                             <VideoEncryption />
+                            ) : (
+                            <Welcome />
+                        )
+                        }
                         </Route>
                         <Route path="/contactus">
+                        {userSession?.isUserSignedIn() ? (
                             <ContactUs />
+                            ) : (
+                            <Welcome />
+                        )
+                        }
                         </Route>
                         <Route path="/">
+                        {userSession?.isUserSignedIn() ? (
                             <Redirect to="/videos/browse" />
+                            ) : (
+                            <Welcome />
+                        )
+                        }
                         </Route>
-                        </Fragment>
-                    ) : (
-                        <Fragment>
                         <Route path="/welcome">
                             <Welcome />
                         </Route>
-                        <Route path="/">
-                            <Redirect to="/welcome" />
-                        </Route>
-                        </Fragment>
-                    )
-                    }
                     </Switch>
                 </div>
             </div>
