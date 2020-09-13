@@ -1,3 +1,17 @@
-### Offical repository of gaideo.com
 
-Coming soon
+# Information Age
+
+We are living in an information age.  In the early days of social media, the freedom to connect with people from all over the world started a revolution of consciousness.  We now know more about each other than ever before, good and bad. Knowledge is always learning and when we learn we get better.  Unfortunately, the price of that knowledge came at a hidden cost.  Before we knew the cost it was too late and our information became a commodity that big business could exploit to make money at our expense. The choices given to us up until this point has been trading one big company to store and control our data with another.
+
+# The Mission
+
+Gaideo is a mission to incorporate all of the good things about social media.  Community.  Sharing.  Learning.  Creativity. And remove all possibilites of the bad things about social media.  Greed. Exploitation. Censorship.  We need to start with a platform that respects the rights of each individual to own their data, and allow them to control exactly how it will be shared with the rest of the world.  Security will be a first-class concept to protect all user's data by default without having to change a hidden setting.
+
+# No Secrets
+
+All of the code used to produce gaideo.com is [open source](https://github.com/gaideo/gaideo). There are no secrets about how your data is being stored and accessed. The backbone of all the data storage is built on [Blockstack's Gaia technology](https://github.com/blockstack/gaia), an open source blockchain with a storage system that encrypts each user's data, and allows them to control both the content and its location at any time.
+
+# The Pledge
+
+We will not charge you money for this site. All of our content will be encrypted including videos. We will not use your data for any business purpose.  We will help you build digital communities to connect and share with exactly the people you want to and no more. Welcome aboard!
+
