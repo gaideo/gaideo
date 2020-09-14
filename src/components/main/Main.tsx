@@ -67,7 +67,7 @@ export default function Main(props: MainProps) {
             color: '#fff',
         },
     }));
-    
+
     const classes = useStyles();
     const [state, setSmallDevice] = React.useState(false);
     const handleSmallDevice = () => {
@@ -78,6 +78,7 @@ export default function Main(props: MainProps) {
     const history = useHistory();
     const { promiseInProgress } = usePromiseTracker();
     const welcomeRoute = useRouteMatch("/welcome");
+    const browseImagesRoute = useRouteMatch("/images/browse");
     const isPublish = window.location.hash.startsWith('#/publish');
     const isVideos = window.location.hash.startsWith('#/videos') || window.location.hash === '';
     const isImages = window.location.hash.startsWith('#/images');
@@ -127,7 +128,7 @@ export default function Main(props: MainProps) {
     useEffect(() => {
 
         const refresh = () => {
-            if (userSession?.isSignInPending()) {
+                if (userSession?.isSignInPending()) {
                 let index = window.location.href.indexOf("authResponse=");
                 if (index >= 0) {
                     let authResponse = window.location.href.substring(index + "authResponse=".length);
@@ -142,7 +143,7 @@ export default function Main(props: MainProps) {
 
         }
         refresh();
-    }, [userSession, props.userData, welcomeRoute, history]);
+    }, [userSession, props.userData, history]);
 
     const handleClick = (event: React.MouseEvent<HTMLElement>) => {
         if (showClose) {
@@ -246,7 +247,7 @@ export default function Main(props: MainProps) {
     const isMobile = mobileCheck();
 
     const appBar = (
-        <AppBar style={{backgroundColor: '#d4e3ea', color: 'rgba(0,0,0,.87)'}} position='fixed'>
+        <AppBar style={{ backgroundColor: '#d4e3ea', color: 'rgba(0,0,0,.87)' }} position='fixed'>
             {
                 promiseInProgress &&
                 <Backdrop className={classes.backdrop} open={promiseInProgress}>
@@ -303,7 +304,7 @@ export default function Main(props: MainProps) {
                                     onClick={handleClick}
                                     color="inherit"
                                 >
-                                    {showClose ? (
+                                    {showClose && browseImagesRoute ? (
                                         <CloseIcon />
 
                                     ) : (
@@ -366,8 +367,8 @@ export default function Main(props: MainProps) {
                         </Route>
                         <Route path="/videos/browse">
                             {userSession?.isUserSignedIn() ? (
-                                <div style={{paddingTop: 30}}>
-                                <BrowseVideos videos={videos} videosLoadedCallback={videosLoadedCallback} />
+                                <div style={{ paddingTop: 30 }}>
+                                    <BrowseVideos videos={videos} videosLoadedCallback={videosLoadedCallback} />
                                 </div>
                             ) : (
                                     <Welcome />
@@ -405,8 +406,8 @@ export default function Main(props: MainProps) {
                         </Route>
                         <Route path="/encrypt">
                             {userSession?.isUserSignedIn() ? (
-                                <div style={{paddingTop: 50, paddingLeft: 24}}>
-                                <VideoEncryption />
+                                <div style={{ paddingTop: 50, paddingLeft: 24 }}>
+                                    <VideoEncryption />
                                 </div>
                             ) : (
                                     <Welcome />
@@ -415,8 +416,8 @@ export default function Main(props: MainProps) {
                         </Route>
                         <Route path="/contactus">
                             {userSession?.isUserSignedIn() ? (
-                                <div style={{paddingTop: 50, paddingLeft: 24}}>
-                                <ContactUs />
+                                <div style={{ paddingTop: 50, paddingLeft: 24 }}>
+                                    <ContactUs />
                                 </div>
                             ) : (
                                     <Welcome />

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import 'react-slideshow-image/dist/styles.css'
 import { Slide } from 'react-slideshow-image';
 import { Box, Icon } from '@material-ui/core';
@@ -39,7 +39,7 @@ export function SlideShow(props) {
 
     return (
         <Box style={{backgroundColor: 'black', display: 'flex', flexDirection:"column", justifyContent: 'space-between' }}>
-            <Slide defaultIndex={props.current} indicator={false} easing="ease" {...zoomInProperties} 
+            <Slide defaultIndex={props.current} indicator="false" easing="ease" {...zoomInProperties} 
               prevArrow={(
                 <Icon style={{color: 'white', width:arrowSize, height:arrowSize, cursor: 'pointer', padding: paddingSize}}><KeyboardArrowLeftIcon fontSize="large"/></Icon>
                 )}

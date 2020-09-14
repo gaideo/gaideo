@@ -97,9 +97,9 @@ export function VideoPlayer() {
   }, [userSession, customLoader, id, history, context]);
 
   return (
-<div>
-      <div id="videoParent" style={{ width: "100%", height:"calc(70vh" }}>
-        <video id="video" width={width} height={height} style={{ objectFit: "initial" }} controls></video>
+    <div>
+      <div id="videoParent" style={{ height:"calc(70vh" }}>
+        <video id="video" width={width} height={height} style={{ paddingLeft: 20, objectFit: "initial" }} controls></video>
       </div>
       <VideoDescription />
     </div>  );
