@@ -9,6 +9,7 @@ import CameraEnhanceOutlinedIcon from '@material-ui/icons/CameraEnhanceOutlined'
 import { useConnect } from '@blockstack/connect';
 import { UserData } from 'blockstack/lib/auth/authApp';
 import AccountCircle from '@material-ui/icons/AccountCircle';
+import CloseIcon from '@material-ui/icons/CloseOutlined';
 import { useHistory, Route, Switch, Redirect, useRouteMatch } from 'react-router-dom';
 import { usePromiseTracker } from 'react-promise-tracker';
 import { VideoPlayer } from '../video-player/VideoPlayer';
@@ -30,9 +31,9 @@ const useStyles = makeStyles((theme) => ({
     toolbar: theme.mixins.toolbar,
     content: {
         flexGrow: 1,
-        padding: theme.spacing(3),
         [theme.breakpoints.up('md')]: {
             marginLeft: 150,
+            padding: theme.spacing(3),
         },
     },
     title: {
@@ -49,7 +50,16 @@ const useStyles = makeStyles((theme) => ({
     },
 }));
 
-export default function Main() {
+interface SetUserDataCallback {
+    (userData: UserData | null): void
+}
+
+interface MainProps {
+    userData: UserData | null
+    setUserDataCallback: SetUserDataCallback
+}
+
+export default function Main(props: MainProps) {
 
     const classes = useStyles();
     const [state, setSmallDevice] = React.useState(false);
@@ -59,7 +69,6 @@ export default function Main() {
     const { doOpenAuth }: any = useConnect();
     const { authOptions } = useConnect();
     const { userSession } = authOptions;
-    const [userData, setUserData] = useState<UserData | null>(null);
     const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
     const open = Boolean(anchorEl);
     const history = useHistory();
@@ -77,6 +86,8 @@ export default function Main() {
     const [contactUsSelected, setContactUsSelected] = useState(isContactUs);
     const [photos, setPhotos] = useState(new Array<Photo>());
     const [videos, setVideos] = useState(new Array<BrowseEntry>());
+    const [showClose, setShowClose] = useState(false);
+    const [slideShowIndex, setSlideShowIndex] = useState<number | null>(null);
 
     if (!publishSelected && isPublish) {
         setPublishSelected(true);
@@ -111,18 +122,31 @@ export default function Main() {
 
     useEffect(() => {
 
-        const refresh = async () => {
+        const refresh = () => {
             if (userSession?.isSignInPending()) {
-                await userSession.handlePendingSignIn();
+                let index = window.location.href.indexOf("authResponse=");
+                if (index >= 0) {
+                    let authResponse = window.location.href.substring(index + "authResponse=".length);
+                    if (authResponse.endsWith('#/')) {
+                        authResponse = authResponse.substring(0, authResponse.length - 2);
+                    }
+                    userSession.handlePendingSignIn(authResponse).then(ud => {
+                        window.location.href = '/'
+                    });
+                }
             }
 
         }
         refresh();
-    }, [userSession, userData, welcomeRoute]);
-
+    }, [userSession, props.userData, welcomeRoute, history]);
 
     const handleClick = (event: React.MouseEvent<HTMLElement>) => {
-        setAnchorEl(event.currentTarget);
+        if (showClose) {
+            toggleCloseCallback();
+        }
+        else {
+            setAnchorEl(event.currentTarget);
+        }
     };
 
     const handleClose = () => {
@@ -171,6 +195,17 @@ export default function Main() {
         setVideos(videos);
     }, []);
 
+    const toggleCloseCallback = useCallback(() => {
+        if (showClose) {
+            setSlideShowIndex(null);
+        }
+        setShowClose(!showClose);
+    }, [showClose]);
+
+    const setSlideShowIndexCallback = useCallback((index: number | null) => {
+        setSlideShowIndex(index);
+    }, []);
+
     const drawer = (
         <div>
             <div>
@@ -204,7 +239,7 @@ export default function Main() {
         </div>
     )
     return (
-        <div style={{backgroundImage: userSession?.isUserSignedIn() ? 'none' : 'url(/welcome.jpg)'}}>
+        <div style={{ backgroundImage: userSession?.isUserSignedIn() ? 'none' : 'url(/welcome.jpg)' }}>
             <AppBar position='fixed'>
                 {
                     promiseInProgress &&
@@ -250,7 +285,7 @@ export default function Main() {
                                 {drawer}
                             </Drawer>
                         }
-                        <Typography variant="h6" className={classes.title} style={{ paddingLeft: userSession?.isUserSignedIn() ?  250 : 0 }}>
+                        <Typography variant="h6" className={classes.title} style={{ paddingLeft: userSession?.isUserSignedIn() ? 250 : 0 }}>
                             Welcome to Gaideo, a secure way to internet
                         </Typography>
                     </Hidden>
@@ -262,7 +297,12 @@ export default function Main() {
                                         onClick={handleClick}
                                         color="inherit"
                                     >
-                                        <AccountCircle />
+                                        {showClose ? (
+                                            <CloseIcon />
+
+                                        ) : (
+                                                <AccountCircle />
+                                            )}
                                     </IconButton>
                                     <Menu
                                         id="menu-appbar"
@@ -288,80 +328,88 @@ export default function Main() {
                                 <Button style={{ marginTop: 3 }} color="inherit" onClick={async () => {
                                     await doOpenAuth(authOptions);
                                     if (userSession?.isSignInPending()) {
-                                        setUserData(await userSession.handlePendingSignIn());
+                                        console.log('sign in pending');
+                                        let ud = await userSession.handlePendingSignIn();
+                                        props.setUserDataCallback(ud);
                                     }
+
                                 }}>Login</Button>
                             )
                     }
                 </Toolbar>
             </AppBar>
 
-            <div className={classes.content} style={{marginLeft: welcomeRoute ? 0 : undefined}}>
+            <div className={classes.content} style={{ marginLeft: welcomeRoute ? 0 : undefined }}>
                 <div style={{ paddingTop: 60, paddingLeft: 0, paddingRight: 0 }}>
                     <Switch>
-                    <Route path="/videos/show/:id">
-                        {userSession?.isUserSignedIn() ? (
-                            <VideoPlayer />
-                        ) : (
-                            <Welcome />
-                        )
-                        }
+                        <Route path="/videos/show/:id">
+                            {userSession?.isUserSignedIn() ? (
+                                <VideoPlayer />
+                            ) : (
+                                    <Welcome />
+                                )
+                            }
                         </Route>
                         <Route path="/videos/browse">
-                        {userSession?.isUserSignedIn() ? (
-                            <BrowseVideos videos={videos} videosLoadedCallback={videosLoadedCallback} />
+                            {userSession?.isUserSignedIn() ? (
+                                <BrowseVideos videos={videos} videosLoadedCallback={videosLoadedCallback} />
                             ) : (
-                            <Welcome />
-                        )
-                        }
+                                    <Welcome />
+                                )
+                            }
                         </Route>
                         <Route path="/images/browse">
-                        {userSession?.isUserSignedIn() ? (
-                            <BrowseImages photos={photos} imagesLoadedCallback={imagesLoadedCallback} />
+                            {userSession?.isUserSignedIn() ? (
+                                <BrowseImages
+                                    photos={photos}
+                                    imagesLoadedCallback={imagesLoadedCallback}
+                                    toggleCloseCallback={toggleCloseCallback}
+                                    slideShowIndex={slideShowIndex}
+                                    setSlideShowIndexCallback={setSlideShowIndexCallback} />
                             ) : (
-                            <Welcome />
-                        )
-                        }
+                                    <Welcome />
+                                )
+                            }
                         </Route>
                         <Route path="/publish/:id">
-                        {userSession?.isUserSignedIn() ? (
-                            <PublishVideo />
+                            {userSession?.isUserSignedIn() ? (
+                                <PublishVideo />
                             ) : (
-                            <Welcome />
-                        )
-                        }
+                                    <Welcome />
+                                )
+                            }
                         </Route>
                         <Route path="/publish">
-                        {userSession?.isUserSignedIn() ? (
-                            <PublishVideo />
+                            {userSession?.isUserSignedIn() ? (
+                                <PublishVideo />
                             ) : (
-                            <Welcome />
-                        )
-                        }
+                                    <Welcome />
+                                )
+                            }
                         </Route>
                         <Route path="/encrypt">
-                        {userSession?.isUserSignedIn() ? (
-                            <VideoEncryption />
+                            {userSession?.isUserSignedIn() ? (
+                                <VideoEncryption />
                             ) : (
-                            <Welcome />
-                        )
-                        }
+                                    <Welcome />
+                                )
+                            }
                         </Route>
                         <Route path="/contactus">
-                        {userSession?.isUserSignedIn() ? (
-                            <ContactUs />
+                            {userSession?.isUserSignedIn() ? (
+                                <ContactUs />
                             ) : (
-                            <Welcome />
-                        )
-                        }
+                                    <Welcome />
+                                )
+                            }
                         </Route>
                         <Route path="/">
-                        {userSession?.isUserSignedIn() ? (
-                            <Redirect to="/videos/browse" />
+                            {userSession?.isUserSignedIn() ? (
+                                <Redirect to="/videos/browse" />
                             ) : (
-                            <Welcome />
-                        )
-                        }
+                                    <Welcome />
+                                )
+                            }
                         </Route>
                         <Route path="/welcome">
                             <Welcome />

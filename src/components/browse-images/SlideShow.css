@@ -1,0 +1,7 @@
+.each-slide > div {
+    display: flex;
+    align-items: center;
+    background-size: cover;
+    object-fit: cover;
+  }
+  

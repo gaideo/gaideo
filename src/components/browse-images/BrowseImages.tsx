@@ -15,21 +15,40 @@ interface ImagesLoadedCallback {
     (photos: Photo[]): void
 }
 
+interface ToggleCloseCallback {
+    (): void
+}
+
+interface SetSlideShowIndexCallback {
+    (index: number | null): void
+}
+
 interface BrowseImagesProps {
     photos: Photo[];
     imagesLoadedCallback: ImagesLoadedCallback;
+    toggleCloseCallback: ToggleCloseCallback;
+    slideShowIndex: number | null
+    setSlideShowIndexCallback: SetSlideShowIndexCallback;
 }
 
 export function BrowseImages(props: BrowseImagesProps) {
     const { authOptions } = useConnect();
     const { userSession } = authOptions;
-    const [slideShowIndex, setSlideShowIndex] = React.useState<number | null>(null);
     const [isSelectable, setIsSelectable] = React.useState(false);
     const [loadingMore, setLoadingMore] = React.useState(false);
     const history = useHistory();
     const MAX_MORE = 6;
 
+    function gcd(a : number, b: number) : number {
+        if (b === 0)
+            return a
+        return gcd (b, a % b);
+    }
+
+    const gcdCallback = useCallback(gcd, []);
+
     useEffect(() => {
+
 
         const refresh = async () => {
             const indexes: string[] = [];
@@ -37,20 +56,29 @@ export function BrowseImages(props: BrowseImagesProps) {
             userSession?.listFiles((name: string) => {
                 if (name.startsWith("images/")
                     && name.endsWith(".index")) {
-                    indexes.push(name);
+                        if (indexes.length >= MAX_MORE) {
+                            return false;
+                        }
+                        indexes.push(name);
                     loadBrowseEntry(userSession, name, true, MediaType.Images).then((x: any) => {
                         let be = x as BrowseEntry;
                         if (be) {
-                            let photo: Photo = {
-                                browseEntry: be,
-                                width: 4,
-                                height: 3,
-                                title: be.mediaEntry.title,
-                                src: `data:image/png;base64, ${be.previewImage}`,
-                                selected: false
-                            }
-                            arr.push(photo)
-                            props.imagesLoadedCallback(arr.slice())
+                            let img = new Image();
+                            let src = `data:image/png;base64, ${be.previewImage}`;
+                            img.onload = ev => {
+                                var r = gcdCallback (img.width, img.height);
+                                let photo: Photo = {
+                                    browseEntry: be,
+                                    width: img.width / r,
+                                    height: img.height / r,
+                                    title: be.mediaEntry.title,
+                                    src: src,
+                                    selected: false
+                                }
+                                arr.push(photo)
+                                props.imagesLoadedCallback(arr.slice())
+                            };
+                            img.src = src;
                         }
                     })
                     if (indexes.length >= MAX_MORE) {
@@ -63,7 +91,7 @@ export function BrowseImages(props: BrowseImagesProps) {
         if (props.photos.length === 0) {
             refresh();
         }
-    }, [userSession, history, props]);
+    }, [userSession, history, props, gcdCallback]);
 
     const loadMore = async () => {
         try {
@@ -85,17 +113,23 @@ export function BrowseImages(props: BrowseImagesProps) {
                         loadBrowseEntry(userSession, name, true, MediaType.Images).then((x: any) => {
                             let be = x as BrowseEntry;
                             if (be) {
-                                let photo: Photo = {
-                                    browseEntry: be,
-                                    width: 4,
-                                    height: 3,
-                                    title: be.mediaEntry.title,
-                                    src: `data:image/png;base64, ${be.previewImage}`,
-                                    selected: false
+                                let img = new Image();
+                                let src = `data:image/png;base64, ${be.previewImage}`;
+                                img.onload = ev => {
+                                    var r = gcd (img.width, img.height);
+                                    let photo: Photo = {
+                                        browseEntry: be,
+                                        width: img.width / r,
+                                        height: img.height / r,
+                                        title: be.mediaEntry.title,
+                                        src: src,
+                                        selected: false
+                                    }
+                                    arr.push(photo)
+                                    props.imagesLoadedCallback(arr.slice())
+                                };
+                                img.src = src;
                                 }
-                                arr.push(photo)
-                                props.imagesLoadedCallback(arr.slice());
-                            }
                         })
                     }
                     if (indexes.length >= MAX_MORE) {
@@ -124,7 +158,8 @@ export function BrowseImages(props: BrowseImagesProps) {
                 props.imagesLoadedCallback(props.photos.slice());
             }
             else {
-                setSlideShowIndex(index);
+                props.setSlideShowIndexCallback(index);
+                props.toggleCloseCallback();
             }
         }
 
@@ -144,10 +179,6 @@ export function BrowseImages(props: BrowseImagesProps) {
             props.imagesLoadedCallback(newPhotos);
         }
     }, [props]);
-
-    const closeSlideshowCallback = useCallback(() => {
-        setSlideShowIndex(null);
-    }, []);
 
     const toggleSelectionCallback = useCallback(() => {
         const s = !isSelectable;
@@ -205,11 +236,11 @@ export function BrowseImages(props: BrowseImagesProps) {
 
     return (
         <Fragment>
-            { slideShowIndex != null ? (
+            { props.slideShowIndex != null ? (
                 <SlideShow
                     images={props.photos}
-                    current={slideShowIndex}
-                    closeSlideshowCallback={closeSlideshowCallback} />
+                    current={props.slideShowIndex}
+                />
             ) : (
                     <div>
                         <Gallery photos={props.photos} renderImage={imageRenderer} />
