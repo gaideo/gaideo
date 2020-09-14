@@ -9,21 +9,11 @@ import { mobileCheck } from '../../utilities/responsive-utils';
 import { useWindowSize } from '../../effects/size-effect';
 
 export function SlideShow(props) {
-    const slideRef = React.useRef();
-
     const isMobile = mobileCheck();
     const arrowSize = isMobile ? 0 : undefined;
     const paddingSize = isMobile ? 0 : 10;
 
    
-    const goto = (index) => {
-        slideRef.current.goTo(index);
-    }
-
-    useEffect(() => {
-        goto(props.current);
-    }, [props]);
-
     const zoomInProperties = {
         indicators: true,
         scale: 1.4,
@@ -49,7 +39,7 @@ export function SlideShow(props) {
 
     return (
         <Box style={{backgroundColor: 'black', display: 'flex', flexDirection:"column", justifyContent: 'space-between' }}>
-            <Slide ref={slideRef} easing="ease" {...zoomInProperties} 
+            <Slide defaultIndex={props.current} indicator={false} easing="ease" {...zoomInProperties} 
               prevArrow={(
                 <Icon style={{color: 'white', width:arrowSize, height:arrowSize, cursor: 'pointer', padding: paddingSize}}><KeyboardArrowLeftIcon fontSize="large"/></Icon>
                 )}

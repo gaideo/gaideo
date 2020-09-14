@@ -526,7 +526,7 @@ export default function PublishVideo() {
     }, [userSession, id])
 
     return (
-        <div className={classes.root}>
+        <div className={classes.root} style={{padding: 24}}>
             <Stepper style={{ maxHeight: 800 }} activeStep={activeStep}>
                 {steps.map((label, index) => {
                     const stepProps: { completed?: boolean } = {};

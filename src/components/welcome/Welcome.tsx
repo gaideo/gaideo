@@ -3,6 +3,7 @@ import { Typography, Link, Box, Paper } from '@material-ui/core';
 
 export function Welcome() {
     return (        
+        <div style={{paddingTop: 50, paddingBottom: 20}}>
         <Box style={{marginLeft: '5%', marginRight: '5%', color: 'white'}}>
             <Paper style={{padding: 20, marginBottom: 30}}>
 
@@ -43,6 +44,7 @@ export function Welcome() {
             </Typography>
             </Paper>
         </Box>
+        </div>
     );
 
 }

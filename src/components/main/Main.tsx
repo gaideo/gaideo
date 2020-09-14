@@ -50,12 +50,13 @@ export default function Main(props: MainProps) {
             flexGrow: 1,
             [theme.breakpoints.up('md')]: {
                 marginLeft: userSession?.isUserSignedIn() ? 150 : undefined,
-                padding: theme.spacing(3),
+                padding: theme.spacing(0),
             },
         },
         title: {
             flexGrow: 1,
-            verticalAlign: 'middle'
+            verticalAlign: 'middle',
+            whiteSpace: 'nowrap'
         },
         button: {
             outline: 'none',
@@ -253,7 +254,7 @@ export default function Main(props: MainProps) {
                 </Backdrop>
             }
 
-            <Toolbar style={{ justifyContent: 'space-between', height: isMobile ? 40 : undefined, minHeight: isMobile ? 40 : undefined }}>
+            <Toolbar style={{ whiteSpace: 'nowrap', justifyContent: 'space-between', height: 40, minHeight: 40 }}>
                 <Hidden mdUp implementation="css">
                     <IconButton
                         color="inherit"
@@ -353,7 +354,7 @@ export default function Main(props: MainProps) {
                 </HideOnScroll>
             ) : appBar}
             <div className={classes.content} style={{ marginLeft: welcomeRoute ? 0 : undefined }}>
-                <div style={{ paddingTop: 60, paddingLeft: 0, paddingRight: 0 }}>
+                <div style={{ paddingTop: 18, paddingLeft: 0, paddingRight: 0 }}>
                     <Switch>
                         <Route path="/videos/show/:id">
                             {userSession?.isUserSignedIn() ? (
@@ -365,7 +366,9 @@ export default function Main(props: MainProps) {
                         </Route>
                         <Route path="/videos/browse">
                             {userSession?.isUserSignedIn() ? (
+                                <div style={{paddingTop: 30}}>
                                 <BrowseVideos videos={videos} videosLoadedCallback={videosLoadedCallback} />
+                                </div>
                             ) : (
                                     <Welcome />
                                 )
@@ -402,7 +405,9 @@ export default function Main(props: MainProps) {
                         </Route>
                         <Route path="/encrypt">
                             {userSession?.isUserSignedIn() ? (
+                                <div style={{paddingTop: 50, paddingLeft: 24}}>
                                 <VideoEncryption />
+                                </div>
                             ) : (
                                     <Welcome />
                                 )
@@ -410,7 +415,9 @@ export default function Main(props: MainProps) {
                         </Route>
                         <Route path="/contactus">
                             {userSession?.isUserSignedIn() ? (
+                                <div style={{paddingTop: 50, paddingLeft: 24}}>
                                 <ContactUs />
+                                </div>
                             ) : (
                                     <Welcome />
                                 )

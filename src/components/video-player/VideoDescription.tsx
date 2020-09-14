@@ -29,7 +29,7 @@ export function VideoDescription() {
     }, [userSession, id]);
 
     return (
-        <div>
+        <div style={{paddingLeft: 24}}>
             <div>
                 <Typography variant="h5">{browseEntry?.mediaEntry?.title}</Typography>
             </div>
