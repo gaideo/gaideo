@@ -73,7 +73,9 @@ export function BrowseImages(props: BrowseImagesProps) {
                                     height: img.height / r,
                                     title: be.mediaEntry.title,
                                     src: src,
-                                    selected: false
+                                    selected: false,
+                                    aspectWidth: img.width / r,
+                                    aspectHeight: img.height /r
                                 }
                                 arr.push(photo)
                                 props.imagesLoadedCallback(arr.slice())
@@ -123,7 +125,9 @@ export function BrowseImages(props: BrowseImagesProps) {
                                         height: img.height / r,
                                         title: be.mediaEntry.title,
                                         src: src,
-                                        selected: false
+                                        selected: false,
+                                        aspectWidth: img.width / r,
+                                        aspectHeight: img.height / r
                                     }
                                     arr.push(photo)
                                     props.imagesLoadedCallback(arr.slice())

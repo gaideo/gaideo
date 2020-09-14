@@ -6,5 +6,7 @@ export interface Photo {
     height: number,
     title?: string,
     browseEntry: BrowseEntry,
-    selected: boolean
+    selected: boolean,
+    aspectHeight: number,
+    aspectWidth: number
 }
