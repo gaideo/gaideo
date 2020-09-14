@@ -25,32 +25,6 @@ import { HideOnScroll } from '../hide-on-scroll/HideOnScroll';
 import { mobileCheck } from '../../utilities/responsive-utils';
 
 const drawerWidth = 240;
-const useStyles = makeStyles((theme) => ({
-    drawer: {
-        maxWidth: drawerWidth,
-        flexShrink: 0,
-    },
-    toolbar: theme.mixins.toolbar,
-    content: {
-        flexGrow: 1,
-        [theme.breakpoints.up('md')]: {
-            marginLeft: 150,
-            padding: theme.spacing(3),
-        },
-    },
-    title: {
-        flexGrow: 1,
-        verticalAlign: 'middle'
-    },
-    button: {
-        outline: 'none',
-        verticalAlign: 'middle'
-    },
-    backdrop: {
-        zIndex: theme.zIndex.drawer + 1,
-        color: '#fff',
-    },
-}));
 
 interface SetUserDataCallback {
     (userData: UserData | null): void
@@ -63,14 +37,41 @@ interface MainProps {
 
 export default function Main(props: MainProps) {
 
+    const { doOpenAuth }: any = useConnect();
+    const { authOptions } = useConnect();
+    const { userSession } = authOptions;
+    const useStyles = makeStyles((theme) => ({
+        drawer: {
+            maxWidth: drawerWidth,
+            flexShrink: 0,
+        },
+        toolbar: theme.mixins.toolbar,
+        content: {
+            flexGrow: 1,
+            [theme.breakpoints.up('md')]: {
+                marginLeft: userSession?.isUserSignedIn() ? 150 : undefined,
+                padding: theme.spacing(3),
+            },
+        },
+        title: {
+            flexGrow: 1,
+            verticalAlign: 'middle'
+        },
+        button: {
+            outline: 'none',
+            verticalAlign: 'middle'
+        },
+        backdrop: {
+            zIndex: theme.zIndex.drawer + 1,
+            color: '#fff',
+        },
+    }));
+    
     const classes = useStyles();
     const [state, setSmallDevice] = React.useState(false);
     const handleSmallDevice = () => {
         setSmallDevice(!state);
     };
-    const { doOpenAuth }: any = useConnect();
-    const { authOptions } = useConnect();
-    const { userSession } = authOptions;
     const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
     const open = Boolean(anchorEl);
     const history = useHistory();
