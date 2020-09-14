@@ -13,8 +13,6 @@ const userSession = new UserSession({ appConfig });
 
 const themeObject: ThemeOptions = {
   palette: {
-    primary: { main: '#0a128f' },
-    secondary: { main: '#5e3c6f' },
     type: 'light'
   }
 }

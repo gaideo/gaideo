@@ -21,6 +21,8 @@ import { BrowseImages } from '../browse-images/BrowseImages';
 import { Photo } from '../../models/photo';
 import { BrowseEntry } from '../../models/browse-entry';
 import { Welcome } from '../welcome/Welcome';
+import { HideOnScroll } from '../hide-on-scroll/HideOnScroll';
+import { mobileCheck } from '../../utilities/responsive-utils';
 
 const drawerWidth = 240;
 const useStyles = makeStyles((theme) => ({
@@ -238,107 +240,117 @@ export default function Main(props: MainProps) {
             </div>
         </div>
     )
+
+    const isMobile = mobileCheck();
+
+    const appBar = (
+        <AppBar style={{backgroundColor: '#d4e3ea', color: 'rgba(0,0,0,.87)'}} position='fixed'>
+            {
+                promiseInProgress &&
+                <Backdrop className={classes.backdrop} open={promiseInProgress}>
+                    <CircularProgress color="inherit" />
+                </Backdrop>
+            }
+
+            <Toolbar style={{ justifyContent: 'space-between', height: isMobile ? 40 : undefined, minHeight: isMobile ? 40 : undefined }}>
+                <Hidden mdUp implementation="css">
+                    <IconButton
+                        color="inherit"
+                        aria-label="open drawer"
+                        edge='start'
+                        onClick={handleSmallDevice}
+                    >  <MenuIcon />
+                    </IconButton>
+                    {userSession?.isUserSignedIn() &&
+                        <Drawer
+                            style={{ width: state ? drawerWidth : 0 }}
+                            classes={{
+                                paper: classes.drawer,
+                            }}
+                            open={state}
+                            onClose={handleSmallDevice}
+                        >
+                            {drawer}
+                        </Drawer>
+                    }
+                    <Typography component="span" variant="h6" className={classes.title}>
+                        Welcome to Gaideo
+                </Typography>
+                </Hidden>
+                <Hidden smDown implementation="css">
+                    {userSession?.isUserSignedIn() &&
+                        <Drawer
+                            classes={{
+                                paper: classes.drawer,
+                            }}
+                            open
+                            variant='permanent'
+                        >
+                            {drawer}
+                        </Drawer>
+                    }
+                    <Typography variant="h6" className={classes.title} style={{ paddingLeft: userSession?.isUserSignedIn() ? 250 : 0 }}>
+                        Welcome to Gaideo, a secure way to internet
+                </Typography>
+                </Hidden>
+                {
+                    userSession?.isUserSignedIn() ?
+                        (
+                            <div>
+                                <IconButton
+                                    onClick={handleClick}
+                                    color="inherit"
+                                >
+                                    {showClose ? (
+                                        <CloseIcon />
+
+                                    ) : (
+                                            <AccountCircle />
+                                        )}
+                                </IconButton>
+                                <Menu
+                                    id="menu-appbar"
+                                    anchorEl={anchorEl}
+                                    anchorOrigin={{
+                                        vertical: 'top',
+                                        horizontal: 'right',
+                                    }}
+                                    keepMounted
+                                    transformOrigin={{
+                                        vertical: 'top',
+                                        horizontal: 'right',
+                                    }}
+                                    open={open}
+                                    onClose={handleClose}
+                                >
+                                    <MenuItem onClick={() => { handleMenu("profile") }}>Profile</MenuItem>
+                                    <MenuItem onClick={() => { handleMenu("logout") }}>Logout</MenuItem>
+                                </Menu>
+                            </div>
+                        ) :
+                        (
+                            <Button style={{ marginTop: 3 }} color="inherit" onClick={async () => {
+                                await doOpenAuth(authOptions);
+                                if (userSession?.isSignInPending()) {
+                                    console.log('sign in pending');
+                                    let ud = await userSession.handlePendingSignIn();
+                                    props.setUserDataCallback(ud);
+                                }
+
+                            }}>Login</Button>
+                        )
+                }
+            </Toolbar>
+        </AppBar>
+    )
+
     return (
         <div style={{ backgroundImage: userSession?.isUserSignedIn() ? 'none' : 'url(/welcome.jpg)' }}>
-            <AppBar position='fixed'>
-                {
-                    promiseInProgress &&
-                    <Backdrop className={classes.backdrop} open={promiseInProgress}>
-                        <CircularProgress color="inherit" />
-                    </Backdrop>
-                }
-
-                <Toolbar style={{ justifyContent: 'space-between' }}>
-                    <Hidden mdUp implementation="css">
-                        <IconButton
-                            color="inherit"
-                            aria-label="open drawer"
-                            edge='start'
-                            onClick={handleSmallDevice}
-                        >  <MenuIcon />
-                        </IconButton>
-                        {userSession?.isUserSignedIn() &&
-                            <Drawer
-                                style={{ width: state ? drawerWidth : 0 }}
-                                classes={{
-                                    paper: classes.drawer,
-                                }}
-                                open={state}
-                                onClose={handleSmallDevice}
-                            >
-                                {drawer}
-                            </Drawer>
-                        }
-                        <Typography component="span" variant="h6" className={classes.title}>
-                            Welcome to Gaideo
-                        </Typography>
-                    </Hidden>
-                    <Hidden smDown implementation="css">
-                        {userSession?.isUserSignedIn() &&
-                            <Drawer
-                                classes={{
-                                    paper: classes.drawer,
-                                }}
-                                open
-                                variant='permanent'
-                            >
-                                {drawer}
-                            </Drawer>
-                        }
-                        <Typography variant="h6" className={classes.title} style={{ paddingLeft: userSession?.isUserSignedIn() ? 250 : 0 }}>
-                            Welcome to Gaideo, a secure way to internet
-                        </Typography>
-                    </Hidden>
-                    {
-                        userSession?.isUserSignedIn() ?
-                            (
-                                <div>
-                                    <IconButton
-                                        onClick={handleClick}
-                                        color="inherit"
-                                    >
-                                        {showClose ? (
-                                            <CloseIcon />
-
-                                        ) : (
-                                                <AccountCircle />
-                                            )}
-                                    </IconButton>
-                                    <Menu
-                                        id="menu-appbar"
-                                        anchorEl={anchorEl}
-                                        anchorOrigin={{
-                                            vertical: 'top',
-                                            horizontal: 'right',
-                                        }}
-                                        keepMounted
-                                        transformOrigin={{
-                                            vertical: 'top',
-                                            horizontal: 'right',
-                                        }}
-                                        open={open}
-                                        onClose={handleClose}
-                                    >
-                                        <MenuItem onClick={() => { handleMenu("profile") }}>Profile</MenuItem>
-                                        <MenuItem onClick={() => { handleMenu("logout") }}>Logout</MenuItem>
-                                    </Menu>
-                                </div>
-                            ) :
-                            (
-                                <Button style={{ marginTop: 3 }} color="inherit" onClick={async () => {
-                                    await doOpenAuth(authOptions);
-                                    if (userSession?.isSignInPending()) {
-                                        console.log('sign in pending');
-                                        let ud = await userSession.handlePendingSignIn();
-                                        props.setUserDataCallback(ud);
-                                    }
-
-                                }}>Login</Button>
-                            )
-                    }
-                </Toolbar>
-            </AppBar>
-
+            {isMobile ? (
+                <HideOnScroll>
+                    {appBar}
+                </HideOnScroll>
+            ) : appBar}
             <div className={classes.content} style={{ marginLeft: welcomeRoute ? 0 : undefined }}>
                 <div style={{ paddingTop: 60, paddingLeft: 0, paddingRight: 0 }}>
                     <Switch>
