@@ -7,13 +7,14 @@ import KeyboardArrowLeftIcon from '@material-ui/icons/KeyboardArrowLeft';
 import "./SlideShow.css";
 import { mobileCheck } from '../../utilities/responsive-utils';
 import { useWindowSize } from '../../effects/size-effect';
+import useKeypress from '../../effects/key-press-effect';
 
 export function SlideShow(props) {
     const isMobile = mobileCheck();
     const arrowSize = isMobile ? 0 : undefined;
     const paddingSize = isMobile ? 0 : 10;
 
-   
+
     const zoomInProperties = {
         indicators: true,
         scale: 1.4,
@@ -31,32 +32,36 @@ export function SlideShow(props) {
             nw = width;
             let a = aspectHeight * nw / aspectWidth;
             let b = height - a;
-            nh  = height - b;
-        } 
-       
+            nh = height - b;
+        }
+
         return [nw, nh];
     }
 
+    useKeypress('Escape', () => {
+        props.closeSlideShowCallback();
+    });
+
     return (
-        <Box style={{backgroundColor: 'black', display: 'flex', flexDirection:"column", justifyContent: 'space-between' }}>
-            <Slide defaultIndex={props.current} indicator="false" easing="ease" {...zoomInProperties} 
-              prevArrow={(
-                <Icon style={{color: 'white', width:arrowSize, height:arrowSize, cursor: 'pointer', padding: paddingSize}}><KeyboardArrowLeftIcon fontSize="large"/></Icon>
+        <Box style={{ backgroundColor: 'black', display: 'flex', flexDirection: "column", justifyContent: 'space-between' }}>
+            <Slide defaultIndex={props.current} indicator="false" easing="ease" {...zoomInProperties}
+                prevArrow={(
+                    <Icon style={{ color: 'white', width: arrowSize, height: arrowSize, cursor: 'pointer', padding: paddingSize }}><KeyboardArrowLeftIcon fontSize="large" /></Icon>
                 )}
-              nextArrow={(
-                <Icon style={{color: 'white', width:arrowSize, height:arrowSize, cursor: 'pointer', padding: paddingSize}}><KeyboardArrowRightIcon fontSize="large"/></Icon>
+                nextArrow={(
+                    <Icon style={{ color: 'white', width: arrowSize, height: arrowSize, cursor: 'pointer', padding: paddingSize }}><KeyboardArrowRightIcon fontSize="large" /></Icon>
                 )}
-              >
-                {props.images.map((each, index) => (    
+            >
+                {props.images.map((each, index) => (
                     <div id="imageParent" key={index} className="each-slide" onClick={() => props.closeSlideShowCallback()}>
-                    <div>
-                        <div style={{height: '95vh', margin:'auto', display: 'flex', alignItems: 'center'}}>
-                            <div>
-                            <img  width={getImageSize(each.aspectWidth, each.aspectHeight)[0]} height={getImageSize(each.aspectWidth, each.aspectHeight)[1]} alt={each.title} src={each.src} />
+                        <div>
+                            <div style={{ height: '95vh', margin: 'auto', display: 'flex', alignItems: 'center' }}>
+                                <div>
+                                    <img width={getImageSize(each.aspectWidth, each.aspectHeight)[0]} height={getImageSize(each.aspectWidth, each.aspectHeight)[1]} alt={each.title} src={each.src} />
+                                </div>
                             </div>
                         </div>
                     </div>
-                  </div>
                 ))}
             </Slide>
         </Box>)

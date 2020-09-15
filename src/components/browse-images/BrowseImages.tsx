@@ -45,7 +45,23 @@ export function BrowseImages(props: BrowseImagesProps) {
         return gcd (b, a % b);
     }
 
-    const gcdCallback = useCallback(gcd, []);
+    const loadPhoto = (be: BrowseEntry, img: HTMLImageElement, src: string) => {
+        var r = gcd (img.width, img.height,);
+        let photo: Photo = {
+            browseEntry: be,
+            width: img.width,
+            height: img.height,
+            title: be.mediaEntry.title,
+            src: src,
+            selected: false,
+            aspectWidth: img.width / r,
+            aspectHeight: img.height /r
+        }
+        return photo;
+    }
+
+    const loadPhotoCallback = useCallback(loadPhoto, []);
+
 
     useEffect(() => {
 
@@ -66,17 +82,7 @@ export function BrowseImages(props: BrowseImagesProps) {
                             let img = new Image();
                             let src = `data:image/png;base64, ${be.previewImage}`;
                             img.onload = ev => {
-                                var r = gcdCallback (img.width, img.height);
-                                let photo: Photo = {
-                                    browseEntry: be,
-                                    width: img.width / r,
-                                    height: img.height / r,
-                                    title: be.mediaEntry.title,
-                                    src: src,
-                                    selected: false,
-                                    aspectWidth: img.width / r,
-                                    aspectHeight: img.height /r
-                                }
+                                let photo = loadPhotoCallback(be, img, src);
                                 arr.push(photo)
                                 props.imagesLoadedCallback(arr.slice())
                             };
@@ -93,7 +99,7 @@ export function BrowseImages(props: BrowseImagesProps) {
         if (props.photos.length === 0) {
             refresh();
         }
-    }, [userSession, history, props, gcdCallback]);
+    }, [userSession, history, props, loadPhotoCallback]);
 
     const loadMore = async () => {
         try {
@@ -118,17 +124,7 @@ export function BrowseImages(props: BrowseImagesProps) {
                                 let img = new Image();
                                 let src = `data:image/png;base64, ${be.previewImage}`;
                                 img.onload = ev => {
-                                    var r = gcd (img.width, img.height);
-                                    let photo: Photo = {
-                                        browseEntry: be,
-                                        width: img.width / r,
-                                        height: img.height / r,
-                                        title: be.mediaEntry.title,
-                                        src: src,
-                                        selected: false,
-                                        aspectWidth: img.width / r,
-                                        aspectHeight: img.height / r
-                                    }
+                                    let photo = loadPhoto(be, img, src);
                                     arr.push(photo)
                                     props.imagesLoadedCallback(arr.slice())
                                 };
@@ -216,7 +212,7 @@ export function BrowseImages(props: BrowseImagesProps) {
 
     const closeSlideShowCallback = useCallback(() => {
         props.setSlideShowIndexCallback(null);
-    }, []);
+    }, [props]);
 
     const imageRenderer = useCallback(
         ({ index, left, top, key, photo }) => (
