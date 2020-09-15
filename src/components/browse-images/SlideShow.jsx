@@ -48,9 +48,9 @@ export function SlideShow(props) {
                 )}
               >
                 {props.images.map((each, index) => (    
-                    <div id="imageParent" key={index} className="each-slide">
+                    <div id="imageParent" key={index} className="each-slide" onClick={() => props.closeSlideShowCallback()}>
                     <div>
-                        <div style={{height: '80vh', margin:'auto', display: 'flex', alignItems: 'center'}}>
+                        <div style={{height: '95vh', margin:'auto', display: 'flex', alignItems: 'center'}}>
                             <div>
                             <img  width={getImageSize(each.aspectWidth, each.aspectHeight)[0]} height={getImageSize(each.aspectWidth, each.aspectHeight)[1]} alt={each.title} src={each.src} />
                             </div>

@@ -214,6 +214,10 @@ export function BrowseImages(props: BrowseImagesProps) {
         }
     }, [history, props.photos, userSession]);
 
+    const closeSlideShowCallback = useCallback(() => {
+        props.setSlideShowIndexCallback(null);
+    }, []);
+
     const imageRenderer = useCallback(
         ({ index, left, top, key, photo }) => (
             <Box key={photo.browseEntry.mediaEntry.id}>
@@ -244,6 +248,7 @@ export function BrowseImages(props: BrowseImagesProps) {
                 <SlideShow
                     images={props.photos}
                     current={props.slideShowIndex}
+                    closeSlideShowCallback={closeSlideShowCallback}
                 />
             ) : (
                     <div>

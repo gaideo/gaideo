@@ -40,6 +40,10 @@ export default function Main(props: MainProps) {
     const { doOpenAuth }: any = useConnect();
     const { authOptions } = useConnect();
     const { userSession } = authOptions;
+    const welcomeRoute = useRouteMatch("/welcome");
+    const browseImagesRoute = useRouteMatch("/images/browse");
+    const [slideShowIndex, setSlideShowIndex] = useState<number | null>(null);
+
     const useStyles = makeStyles((theme) => ({
         drawer: {
             maxWidth: drawerWidth,
@@ -49,7 +53,7 @@ export default function Main(props: MainProps) {
         content: {
             flexGrow: 1,
             [theme.breakpoints.up('md')]: {
-                marginLeft: userSession?.isUserSignedIn() ? 150 : undefined,
+                marginLeft: userSession?.isUserSignedIn() && (!browseImagesRoute || slideShowIndex === null) ? 150 : undefined,
                 padding: theme.spacing(0),
             },
         },
@@ -77,8 +81,6 @@ export default function Main(props: MainProps) {
     const open = Boolean(anchorEl);
     const history = useHistory();
     const { promiseInProgress } = usePromiseTracker();
-    const welcomeRoute = useRouteMatch("/welcome");
-    const browseImagesRoute = useRouteMatch("/images/browse");
     const isPublish = window.location.hash.startsWith('#/publish');
     const isVideos = window.location.hash.startsWith('#/videos') || window.location.hash === '';
     const isImages = window.location.hash.startsWith('#/images');
@@ -92,7 +94,6 @@ export default function Main(props: MainProps) {
     const [photos, setPhotos] = useState(new Array<Photo>());
     const [videos, setVideos] = useState(new Array<BrowseEntry>());
     const [showClose, setShowClose] = useState(false);
-    const [slideShowIndex, setSlideShowIndex] = useState<number | null>(null);
 
     if (!publishSelected && isPublish) {
         setPublishSelected(true);
@@ -209,6 +210,9 @@ export default function Main(props: MainProps) {
 
     const setSlideShowIndexCallback = useCallback((index: number | null) => {
         setSlideShowIndex(index);
+        if (index === null) {
+            setShowClose(false);
+        }
     }, []);
 
     const drawer = (
@@ -247,7 +251,7 @@ export default function Main(props: MainProps) {
     const isMobile = mobileCheck();
 
     const appBar = (
-        <AppBar style={{ backgroundColor: '#d4e3ea', color: 'rgba(0,0,0,.87)' }} position='fixed'>
+        <AppBar style={{visibility: browseImagesRoute && slideShowIndex != null ? 'hidden' : undefined, backgroundColor: '#d4e3ea', color: 'rgba(0,0,0,.87)' }} position='fixed'>
             {
                 promiseInProgress &&
                 <Backdrop className={classes.backdrop} open={promiseInProgress}>
@@ -255,7 +259,7 @@ export default function Main(props: MainProps) {
                 </Backdrop>
             }
 
-            <Toolbar style={{ whiteSpace: 'nowrap', justifyContent: 'space-between', height: 40, minHeight: 40 }}>
+            <Toolbar style={{whiteSpace: 'nowrap', justifyContent: 'space-between', height: 40, minHeight: 40 }}>
                 <Hidden mdUp implementation="css">
                     <IconButton
                         color="inherit"
@@ -355,7 +359,7 @@ export default function Main(props: MainProps) {
                 </HideOnScroll>
             ) : appBar}
             <div className={classes.content} style={{ marginLeft: welcomeRoute ? 0 : undefined }}>
-                <div style={{ paddingTop: 18, paddingLeft: 0, paddingRight: 0 }}>
+                <div style={{ paddingTop: browseImagesRoute && slideShowIndex != null ? 0 : 18, paddingLeft: 0, paddingRight: 0 }}>
                     <Switch>
                         <Route path="/videos/show/:id">
                             {userSession?.isUserSignedIn() ? (
