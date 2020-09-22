@@ -5,6 +5,8 @@ import "../browse-videos/BrowseVideos.css";
 import { useParams, useHistory } from 'react-router-dom';
 import { VideoDescription } from './VideoDescription';
 import { useWindowSize } from '../../effects/size-effect';
+import { getEncryptedMediaFile } from '../../utilities/data-utils';
+import { MediaType } from '../../models/media-entry';
 
 interface VideoPlayerContext {
   current: any;
@@ -50,9 +52,7 @@ export function VideoPlayer() {
     const playVideo = async () => {
       if (Hls.isSupported() && userSession) {
 
-        let videoKey = await userSession.getFile(`videos/${id}/key.bin`, {
-          decrypt: true
-        });
+        let videoKey = await getEncryptedMediaFile(userSession, `videos/${id}/key.bin`, id, MediaType.Video);
         if (videoKey) {
           context.current.videoKey = videoKey;
           let source = await userSession.getFileUrl(`videos/${id}/master.m3u8`)
@@ -98,8 +98,8 @@ export function VideoPlayer() {
 
   return (
     <div>
-      <div id="videoParent" style={{ height:"calc(70vh" }}>
-        <video id="video" width={width} height={height} style={{ paddingLeft: 20, objectFit: "initial" }} controls></video>
+      <div id="videoParent" style={{ height:"calc(70vh", paddingLeft: 20 }}>
+        <video id="video" width={width-20} height={height} style={{ objectFit: "initial" }} controls></video>
       </div>
       <VideoDescription />
     </div>  );

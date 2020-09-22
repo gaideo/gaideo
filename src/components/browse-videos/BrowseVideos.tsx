@@ -6,10 +6,12 @@ import "./BrowseVideos.css";
 import MenuItem from '@material-ui/core/MenuItem';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import { useHistory } from 'react-router-dom';
-import { loadBrowseEntry, deleteVideoEntry } from '../../utilities/data-utils';
+import { loadBrowseEntryFromCache, deleteVideoEntry, getCacheEntries } from '../../utilities/data-utils';
 import ConfirmDialog from '../confirm-dialog/ConfirmDialog';
 import { MediaEntry, MediaType } from '../../models/media-entry';
 import { trackPromise } from 'react-promise-tracker';
+import { IDBPDatabase } from 'idb';
+import { VideosLoadedCallback } from '../../models/callbacks';
 
 const options = [
     'Share',
@@ -19,13 +21,10 @@ const options = [
 
 const ITEM_HEIGHT = 48;
 
-interface VideosLoadedCallback {
-    (videos: BrowseEntry[]): void
-}
-
 interface BrowseVideosProps {
     videos: BrowseEntry[];
     videosLoadedCallback: VideosLoadedCallback;
+    db?: IDBPDatabase<unknown> | null | undefined;
 }
 
 export function BrowseVideos(props: BrowseVideosProps) {
@@ -37,13 +36,12 @@ export function BrowseVideos(props: BrowseVideosProps) {
     const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
     const open = Boolean(anchorEl);
     const [loadingMore, setLoadingMore] = React.useState(false);
-
-    const MAX_MORE = 6;
+    const [lastCacheKeys, setLastCacheKeys] = React.useState<IDBValidKey[] | null>(null);
+    const MAX_MORE = 12;
 
     useEffect(() => {
 
         const refresh = async () => {
-            const indexes: string[] = [];
             let arr: BrowseEntry[] = [];
             /*
             let deleteme: string[] = [];
@@ -52,27 +50,31 @@ export function BrowseVideos(props: BrowseVideosProps) {
                 return true;
             });
             for (let i=0; i<deleteme.length; i++) {
+                console.log(deleteme[i]);
                 await userSession?.deleteFile(deleteme[i], {
                     wasSigned: false
                 })
-            }*/
-            userSession?.listFiles((name: string) => {
-                if (name.startsWith("videos/")
-                    && name.endsWith(".index")) {
-                    indexes.push(name);
-                    loadBrowseEntry(userSession, name, true, MediaType.Video).then((x: any) => {
-                        let be = x as BrowseEntry;
-                        if (be) {
-                            arr.push(be);
-                            props.videosLoadedCallback(arr.slice())
+            }
+            */
+            if (userSession && props.db) {
+                let cacheResults = await getCacheEntries(userSession, props.db, MediaType.Video, MAX_MORE, null);
+                if (cacheResults.cacheEntries?.length > 0) {
+                    for (let i = 0; i < cacheResults.cacheEntries?.length; i++) {
+                        let decryptedData = await userSession.decryptContent(cacheResults.cacheEntries[i].data) as string;
+                        if (decryptedData) {
+                            let mediaEntry = JSON.parse(decryptedData);
+                            let be = await loadBrowseEntryFromCache(userSession, mediaEntry, true) as BrowseEntry;
+                            if (be) {
+                                arr.push(be);
+                                props.videosLoadedCallback(arr.slice())
+                            }
                         }
-                    })
-                    if (indexes.length >= MAX_MORE) {
-                        return false;
+                    }
+                    if (cacheResults.nextKey && cacheResults.nextPrimaryKey) {
+                        setLastCacheKeys([cacheResults.nextKey, cacheResults.nextPrimaryKey]);
                     }
                 }
-                return true;
-            })
+            }
         }
         if (props.videos.length === 0) {
             refresh();
@@ -80,39 +82,35 @@ export function BrowseVideos(props: BrowseVideosProps) {
     }, [userSession, history, props]);
 
     const loadMore = async () => {
-        try {
-            setLoadingMore(true)
-            const indexes: string[] = [];
-            let arr: BrowseEntry[] = props.videos;
-            await userSession?.listFiles((name: string) => {
-                if (name.startsWith("videos/")
-                    && name.endsWith(".index")) {
-                    let found = false;
-                    for (let i = 0; i < props.videos.length; i++) {
-                        let indexFile = `videos/${props.videos[i].mediaEntry.id}.index`;
-                        if (indexFile === name) {
-                            found = true;
-                        }
-                    }
-                    if (!found) {
-                        indexes.push(name);
-                        loadBrowseEntry(userSession, name, true, MediaType.Video).then((x: any) => {
-                            let be = x as BrowseEntry;
+        if (userSession && props.db && lastCacheKeys && lastCacheKeys?.length > 0) {
+            setLoadingMore(true);
+            try {
+                let arr: BrowseEntry[] = props.videos;
+                let cacheResults = await getCacheEntries(userSession, props.db, MediaType.Video, MAX_MORE, lastCacheKeys);
+                if (cacheResults.cacheEntries?.length > 0) {
+                    for (let i = 0; i < cacheResults.cacheEntries?.length; i++) {
+                        let decryptedData = await userSession.decryptContent(cacheResults.cacheEntries[i].data) as string;
+                        if (decryptedData) {
+                            let mediaEntry = JSON.parse(decryptedData);
+                            let be = await loadBrowseEntryFromCache(userSession, mediaEntry, true) as BrowseEntry
                             if (be) {
                                 arr.push(be);
                                 props.videosLoadedCallback(arr.slice())
                             }
-                        })
+                        }
                     }
-                    if (indexes.length >= MAX_MORE) {
-                        return false;
+                    if (cacheResults.nextKey && cacheResults.nextPrimaryKey) {
+                        setLastCacheKeys([cacheResults.nextKey, cacheResults.nextPrimaryKey]);
+                    }
+                    else {
+                        setLastCacheKeys(null);
                     }
                 }
-                return true;
-            })
-        }
-        finally {
-            setLoadingMore(false);
+
+            }
+            finally {
+                setLoadingMore(false);
+            }
         }
     }
 
@@ -145,10 +143,13 @@ export function BrowseVideos(props: BrowseVideosProps) {
                 setConfirmOpen(true);
             }
         }
-        if (option === 'Edit') {
+        else if (option === 'Edit') {
             if (menuMediaEntry) {
                 history.push(`/publish/${menuMediaEntry.id}`);
             }
+        }
+        else if (option === 'Share') {
+
         }
         handleClose();
     };

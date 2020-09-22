@@ -3,6 +3,7 @@ import { makeStyles, Divider, List, ListItem, ListItemText, AppBar, Toolbar, Dra
 import MenuIcon from '@material-ui/icons/MenuOutlined';
 import PublishIcon from '@material-ui/icons/PublishOutlined';
 import MovieIcon from '@material-ui/icons/MovieOutlined';
+import PeopleIcon from '@material-ui/icons/PeopleOutlined';
 import EncryptIcon from '@material-ui/icons/EnhancedEncryptionOutlined';
 import ContactIcon from '@material-ui/icons/ContactMailOutlined';
 import CameraEnhanceOutlinedIcon from '@material-ui/icons/CameraEnhanceOutlined';
@@ -13,7 +14,6 @@ import CloseIcon from '@material-ui/icons/CloseOutlined';
 import { useHistory, Route, Switch, Redirect, useRouteMatch } from 'react-router-dom';
 import { usePromiseTracker } from 'react-promise-tracker';
 import { VideoPlayer } from '../video-player/VideoPlayer';
-import { BrowseVideos } from '../browse-videos/BrowseVideos';
 import PublishVideo from '../publish-media/PublishMedia';
 import { VideoEncryption } from '../video-encryption/VideoEncryption';
 import { ContactUs } from '../contact-us/ContactUs';
@@ -23,6 +23,10 @@ import { BrowseEntry } from '../../models/browse-entry';
 import { Welcome } from '../welcome/Welcome';
 import { HideOnScroll } from '../hide-on-scroll/HideOnScroll';
 import { mobileCheck } from '../../utilities/responsive-utils';
+import { BrowseVideos } from '../browse-videos/BrowseVideos';
+import { IDBPDatabase } from 'idb';
+import { Friends } from '../community/Friends';
+import { Community } from '../community/Community';
 
 const drawerWidth = 240;
 
@@ -32,7 +36,9 @@ interface SetUserDataCallback {
 
 interface MainProps {
     userData: UserData | null
-    setUserDataCallback: SetUserDataCallback
+    setUserDataCallback: SetUserDataCallback,
+    db: IDBPDatabase<unknown> | null,
+    worker: Worker | null
 }
 
 export default function Main(props: MainProps) {
@@ -84,16 +90,19 @@ export default function Main(props: MainProps) {
     const isPublish = window.location.hash.startsWith('#/publish');
     const isVideos = window.location.hash.startsWith('#/videos') || window.location.hash === '';
     const isImages = window.location.hash.startsWith('#/images');
+    const isCommunity = window.location.hash.startsWith('#/community');
     const isEncrypt = window.location.hash.startsWith('#/encrypt');
     const isContactUs = window.location.hash.startsWith('#/contactus');
     const [publishSelected, setPublishSelected] = useState(isPublish);
     const [videosSelected, setVideosSelected] = useState(isVideos);
     const [imagesSelected, setImagesSelected] = useState(isImages);
+    const [communitySelected, setCommunitySelected] = useState(isCommunity);
     const [encryptSelected, setEncryptSelected] = useState(isEncrypt);
     const [contactUsSelected, setContactUsSelected] = useState(isContactUs);
     const [photos, setPhotos] = useState(new Array<Photo>());
     const [videos, setVideos] = useState(new Array<BrowseEntry>());
     const [showClose, setShowClose] = useState(false);
+    const [showFriends, setShowFriends] = useState(false);
 
     if (!publishSelected && isPublish) {
         setPublishSelected(true);
@@ -125,11 +134,17 @@ export default function Main(props: MainProps) {
     else if (contactUsSelected && !isContactUs) {
         setContactUsSelected(false);
     }
+    if (!communitySelected && isCommunity) {
+        setCommunitySelected(true);
+    }
+    else if (communitySelected && !isCommunity) {
+        setCommunitySelected(false);
+    }
 
     useEffect(() => {
-
         const refresh = () => {
-                if (userSession?.isSignInPending()) {
+
+            if (userSession?.isSignInPending()) {
                 let index = window.location.href.indexOf("authResponse=");
                 if (index >= 0) {
                     let authResponse = window.location.href.substring(index + "authResponse=".length);
@@ -164,6 +179,9 @@ export default function Main(props: MainProps) {
             userSession?.signUserOut();
             window.location.href = '/';
         }
+        else if (option === 'friends') {
+            setShowFriends(true);
+        }
         handleClose();
     };
 
@@ -173,11 +191,16 @@ export default function Main(props: MainProps) {
         setEncryptSelected(name === "Encrypt Videos");
         setContactUsSelected(name === "Contact Us");
         setVideosSelected(name === "Videos")
+        setCommunitySelected(name === "Community");
+
         if (name === "Publish") {
             path = '/publish';
         }
         else if (name === "Photos") {
             path = "/images/browse";
+        }
+        else if (name === "Community") {
+            path = "/community";
         }
         else if (name === "Encrypt Videos") {
             path = '/encrypt';
@@ -215,6 +238,10 @@ export default function Main(props: MainProps) {
         }
     }, []);
 
+    const showFriendsCallback = useCallback((show: boolean) => {
+        setShowFriends(show);
+    }, []);
+
     const drawer = (
         <div>
             <div>
@@ -231,6 +258,10 @@ export default function Main(props: MainProps) {
                     <ListItem button selected={publishSelected} onClick={() => { navigateContent("Publish") }}>
                         <PublishIcon style={{ paddingRight: 5 }} />
                         <ListItemText primary={"Publish"} />
+                    </ListItem>
+                    <ListItem button selected={communitySelected} onClick={() => { navigateContent("Community") }}>
+                        <PeopleIcon style={{ paddingRight: 5 }} />
+                        <ListItemText primary={"Community"} />
                     </ListItem>
                 </List>
                 <Divider />
@@ -251,7 +282,7 @@ export default function Main(props: MainProps) {
     const isMobile = mobileCheck();
 
     const appBar = (
-        <AppBar style={{visibility: browseImagesRoute && slideShowIndex != null ? 'hidden' : undefined, backgroundColor: '#d4e3ea', color: 'rgba(0,0,0,.87)' }} position='fixed'>
+        <AppBar style={{ visibility: browseImagesRoute && slideShowIndex != null ? 'hidden' : undefined, backgroundColor: '#d4e3ea', color: 'rgba(0,0,0,.87)' }} position='fixed'>
             {
                 promiseInProgress &&
                 <Backdrop className={classes.backdrop} open={promiseInProgress}>
@@ -259,13 +290,14 @@ export default function Main(props: MainProps) {
                 </Backdrop>
             }
 
-            <Toolbar style={{whiteSpace: 'nowrap', justifyContent: 'space-between', height: 40, minHeight: 40 }}>
+            <Toolbar disableGutters={true} style={{ whiteSpace: 'nowrap', justifyContent: 'space-between', height: 40, minHeight: 40 }}>
                 <Hidden mdUp implementation="css">
                     <IconButton
                         color="inherit"
                         aria-label="open drawer"
-                        edge='start'
+                        edge={'start'}
                         onClick={handleSmallDevice}
+                        style={{ paddingTop: 0, paddingBottom: 0, paddingLeft: 20, minWidth: 40 }}
                     >  <MenuIcon />
                     </IconButton>
                     {userSession?.isUserSignedIn() &&
@@ -281,7 +313,7 @@ export default function Main(props: MainProps) {
                         </Drawer>
                     }
                     <Typography component="span" variant="h6" className={classes.title}>
-                        Welcome to Gaideo
+                        Gaideo
                 </Typography>
                 </Hidden>
                 <Hidden smDown implementation="css">
@@ -296,8 +328,8 @@ export default function Main(props: MainProps) {
                             {drawer}
                         </Drawer>
                     }
-                    <Typography variant="h6" className={classes.title} style={{ paddingLeft: userSession?.isUserSignedIn() ? 250 : 0 }}>
-                        Welcome to Gaideo, a secure way to internet
+                    <Typography variant="h6" className={classes.title} style={{ paddingLeft: userSession?.isUserSignedIn() ? 180 : 0 }}>
+                        Gaideo
                 </Typography>
                 </Hidden>
                 {
@@ -307,6 +339,7 @@ export default function Main(props: MainProps) {
                                 <IconButton
                                     onClick={handleClick}
                                     color="inherit"
+                                    style={{ paddingTop: 0, paddingBottom: 0, paddingLeft: 10, paddingRight: 10, minWidth: 40 }}
                                 >
                                     {showClose && browseImagesRoute ? (
                                         <CloseIcon />
@@ -331,6 +364,7 @@ export default function Main(props: MainProps) {
                                     onClose={handleClose}
                                 >
                                     <MenuItem onClick={() => { handleMenu("profile") }}>Profile</MenuItem>
+                                    <MenuItem onClick={() => { handleMenu("friends") }}>Friends</MenuItem>
                                     <MenuItem onClick={() => { handleMenu("logout") }}>Logout</MenuItem>
                                 </Menu>
                             </div>
@@ -359,7 +393,10 @@ export default function Main(props: MainProps) {
                 </HideOnScroll>
             ) : appBar}
             <div className={classes.content} style={{ marginLeft: welcomeRoute ? 0 : undefined }}>
+
                 <div style={{ paddingTop: browseImagesRoute && slideShowIndex != null ? 0 : 18, paddingLeft: 0, paddingRight: 0 }}>
+                    <Friends show={showFriends} showCallback={showFriendsCallback} isMobile={isMobile} />
+
                     <Switch>
                         <Route path="/videos/show/:id">
                             {userSession?.isUserSignedIn() ? (
@@ -372,7 +409,7 @@ export default function Main(props: MainProps) {
                         <Route path="/videos/browse">
                             {userSession?.isUserSignedIn() ? (
                                 <div style={{ paddingTop: 30 }}>
-                                    <BrowseVideos videos={videos} videosLoadedCallback={videosLoadedCallback} />
+                                    <BrowseVideos videos={videos} videosLoadedCallback={videosLoadedCallback} db={props.db} />
                                 </div>
                             ) : (
                                     <Welcome />
@@ -386,7 +423,8 @@ export default function Main(props: MainProps) {
                                     imagesLoadedCallback={imagesLoadedCallback}
                                     toggleCloseCallback={toggleCloseCallback}
                                     slideShowIndex={slideShowIndex}
-                                    setSlideShowIndexCallback={setSlideShowIndexCallback} />
+                                    setSlideShowIndexCallback={setSlideShowIndexCallback}
+                                    db={props.db} />
                             ) : (
                                     <Welcome />
                                 )
@@ -394,7 +432,12 @@ export default function Main(props: MainProps) {
                         </Route>
                         <Route path="/publish/:id">
                             {userSession?.isUserSignedIn() ? (
-                                <PublishVideo />
+                                <PublishVideo
+                                    worker={props.worker}
+                                    videos={videos}
+                                    videosLoadedCallback={videosLoadedCallback}
+                                    photos={photos}
+                                    imagesLoadedCallback={imagesLoadedCallback} />
                             ) : (
                                     <Welcome />
                                 )
@@ -402,7 +445,22 @@ export default function Main(props: MainProps) {
                         </Route>
                         <Route path="/publish">
                             {userSession?.isUserSignedIn() ? (
-                                <PublishVideo />
+                                <PublishVideo
+                                    worker={props.worker}
+                                    videos={videos}
+                                    videosLoadedCallback={videosLoadedCallback}
+                                    photos={photos}
+                                    imagesLoadedCallback={imagesLoadedCallback} />
+                            ) : (
+                                    <Welcome />
+                                )
+                            }
+                        </Route>
+                        <Route path="/community">
+                            {userSession?.isUserSignedIn() ? (
+                                <div style={{ paddingTop: 25, paddingLeft: !isMobile ? 22 : 0 }}>
+                                    <Community />
+                                </div>
                             ) : (
                                     <Welcome />
                                 )
@@ -410,7 +468,7 @@ export default function Main(props: MainProps) {
                         </Route>
                         <Route path="/encrypt">
                             {userSession?.isUserSignedIn() ? (
-                                <div style={{ paddingTop: 50, paddingLeft: 24 }}>
+                                <div style={{ paddingTop: 50, paddingLeft: !isMobile ? 22 : 0 }}>
                                     <VideoEncryption />
                                 </div>
                             ) : (
@@ -420,7 +478,7 @@ export default function Main(props: MainProps) {
                         </Route>
                         <Route path="/contactus">
                             {userSession?.isUserSignedIn() ? (
-                                <div style={{ paddingTop: 50, paddingLeft: 24 }}>
+                                <div style={{ paddingTop: 50, paddingLeft: !isMobile ? 22 : 0 }}>
                                     <ContactUs />
                                 </div>
                             ) : (

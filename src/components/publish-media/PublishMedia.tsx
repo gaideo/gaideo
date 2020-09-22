@@ -12,10 +12,14 @@ import { MediaEntry, MediaType } from '../../models/media-entry';
 import { useConnect } from '@blockstack/connect';
 import { trackPromise } from 'react-promise-tracker';
 import { useHistory, useParams } from 'react-router-dom';
-import { deleteVideoEntry, loadBrowseEntry } from '../../utilities/data-utils';
-import { getNow } from '../../utilities/time-utils';
-import { makeUUID4 } from 'blockstack';
+import { createHashAddress, deleteVideoEntry, createPrivateKey, loadBrowseEntry, updateMasterIndex, getPrivateKey } from '../../utilities/data-utils';
+import { computeAge, getNow } from '../../utilities/time-utils';
+import { getPublicKeyFromPrivate, makeUUID4, UserSession } from 'blockstack';
 import { BrowseEntry } from '../../models/browse-entry';
+import { Photo } from '../../models/photo';
+import { ImagesLoadedCallback, VideosLoadedCallback } from '../../models/callbacks';
+import { readBinaryFile } from '../../utilities/file-utils';
+import { MediaFileEntry } from '../../models/media-file-entry';
 
 interface ParamTypes { id: string; }
 
@@ -34,7 +38,15 @@ const useStyles = makeStyles((theme: Theme) =>
     }),
 );
 
-export default function PublishVideo() {
+interface PublishVideoProps {
+    worker: Worker | null;
+    videos: BrowseEntry[] | null;
+    photos: Photo[] | null;
+    videosLoadedCallback: VideosLoadedCallback;
+    imagesLoadedCallback: ImagesLoadedCallback;
+}
+
+export default function PublishVideo(props: PublishVideoProps) {
     const keywordsMessage: string = 'Letters, numbers, special characters # or -';
     type ValidateUploadResultDelegate = (filesToUpload: string[]) => MediaEntry | string;
 
@@ -233,7 +245,7 @@ export default function PublishVideo() {
             }
             else {
                 if (previewImageName && previewImageName.trim().length > 0) {
-                    id = `${id}_${previewImageName.replace('_preview.jpg', '')}`
+                    id = createHashAddress([id, previewImageName.replace('_preview.jpg', '')]);
                 }
                 const mediaEntry: MediaEntry = {
                     id: id,
@@ -267,27 +279,45 @@ export default function PublishVideo() {
         }
     }
 
-    const getImageFileContentType = (name: string) => {
-        let lowerName = name.toLocaleLowerCase();
-        if (lowerName.endsWith(".png")) {
-            return "image/png";
+    const needEncryptVideoFile = (name: string) => {
+        if (name === "key.bin" || name.endsWith("_preview.jpg")) {
+            return true;
         }
-        else if (lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg")) {
-            return "image/jpeg";
-        }
-        else {
-            return "application/octet-stream"
-        }
+        return false;
     }
 
-    const uploadVideo = async (file: any, mediaEntry: MediaEntry, userSession: any) => {
+    const uploadVideo = async (file: any, mediaEntry: MediaEntry, userSession: UserSession, keyExists: boolean) => {
         try {
             let name: string = `videos/${mediaEntry.id}/${file.name}`;
-            await userSession.putFile(name, file, {
-                encrypt: file.name === 'key.bin' || file.name.endsWith('_preview.jpg'),
-                wasString: false,
-                contentType: getVideoFileContentType(file.name)
-            })
+            if (needEncryptVideoFile(file.name)) {
+                let data = await readBinaryFile(file);
+                let privateKey: string | undefined | null;
+                if (keyExists) {
+                    privateKey = await getPrivateKey(userSession, userSession.loadUserData(), mediaEntry.id, MediaType.Video);
+                }
+                else {
+                    privateKey = await createPrivateKey(userSession, mediaEntry.id, MediaType.Video);
+                }
+                if (privateKey) {
+                    let buffer = Buffer.from(new Uint8Array(data));
+                    let publicKey = getPublicKeyFromPrivate(privateKey);
+                    let encryptedData = await userSession.encryptContent(buffer, {
+                        publicKey: publicKey
+                    });
+                    await userSession.putFile(name, encryptedData, {
+                        encrypt: false,
+                        wasString: true,
+                        contentType: 'application/json'
+                    })
+                }
+            }
+            else {
+                await userSession.putFile(name, file, {
+                    encrypt: false,
+                    wasString: false,
+                    contentType: getVideoFileContentType(file.name)
+                })
+            }
             return true;
 
         }
@@ -298,10 +328,11 @@ export default function PublishVideo() {
         return false;
     }
 
-    const uploadImages = async (file: any, mediaEntry: MediaEntry, userSession: any) => {
+    const uploadImage = async (file: any, mediaEntry: MediaEntry, userSession: any) => {
+        let ret: MediaFileEntry | null = null;
         try {
             let copy = { ...mediaEntry };
-            copy.id = `${mediaEntry.id}_${file.name}`;
+            copy.id = createHashAddress([mediaEntry.id, file.name]);
             copy.manifest = [file.name];
             if (mediaEntry.manifest.length > 1) {
                 copy.title = `${title} (${file.name})`;
@@ -314,12 +345,25 @@ export default function PublishVideo() {
             });
 
             try {
-                let name: string = `images/${mediaEntry.id}/${file.name}`;
-                await userSession.putFile(name, file, {
-                    encrypt: true,
-                    wasString: false,
-                    contentType: getImageFileContentType(file.name)
+                let name: string = `images/${copy.id}/${file.name}`;
+
+                let data = await readBinaryFile(file);
+                let privateKey = await createPrivateKey(userSession, copy.id, MediaType.Images);
+                let buffer = Buffer.from(new Uint8Array(data));
+                let publicKey = getPublicKeyFromPrivate(privateKey);
+                let encryptedData = await userSession.encryptContent(buffer, {
+                    publicKey: publicKey
+                });
+                await userSession.putFile(name, encryptedData, {
+                    encrypt: false,
+                    wasString: true,
+                    contentType: 'application/json'
                 })
+
+                ret = {
+                    mediaEntry: copy,
+                    indexFile: indexFile
+                };
             }
             catch (error) {
                 console.log(`Unable to upload image ${file.name}.`)
@@ -338,6 +382,7 @@ export default function PublishVideo() {
         catch (error) {
             console.log(error);
         }
+        return ret;
     }
 
     const validateInfo = () => {
@@ -371,33 +416,56 @@ export default function PublishVideo() {
             setUploading(true);
             try {
                 if (mediaEntry.mediaType === MediaType.Video) {
-                    await userSession.putFile('videos/' + mediaEntry.id + '.index', JSON.stringify(mediaEntry), {
+                    let fname = `videos/${mediaEntry.id}.index`;
+                    await userSession.putFile(fname, JSON.stringify(mediaEntry), {
                         encrypt: true,
                         wasString: true,
                         sign: true
                     });
                     let failed = false;
+                    let keyExists = false;
                     for (let i = 0; i < files.length; i++) {
                         if (files[i].name !== 'keys') {
-                            let success = await uploadVideo(files[i], mediaEntry, userSession)
+                            let success = await uploadVideo(files[i], mediaEntry, userSession, keyExists)
                             if (!success) {
-                                success = await uploadVideo(files[i], mediaEntry, userSession);
+                                success = await uploadVideo(files[i], mediaEntry, userSession, keyExists);
                             }
                             if (!success) {
                                 failed = true;
                                 break;
+                            }
+                            if (needEncryptVideoFile(files[i].name)) {
+                                keyExists = true;
                             }
                         }
                     }
                     if (failed) {
                         deleteVideoEntry(mediaEntry, userSession);
                     }
+                    else {
+                        await updateMasterIndex(userSession, [{ indexFile: fname, mediaEntry: mediaEntry }]);
+                        props.worker?.postMessage({
+                            message: "cacheindexes",
+                            indexFiles: [fname]
+                        });
+                    }
                 }
                 else if (mediaEntry.mediaType === MediaType.Images) {
+                    let mediaEntries: MediaFileEntry[] = [];
                     for (let i = 0; i < files.length; i++) {
                         if (files[i].name !== 'keys') {
-                            await uploadImages(files[i], mediaEntry, userSession)
+                            let me = await uploadImage(files[i], mediaEntry, userSession);
+                            if (me) {
+                                mediaEntries.push(me);
+                            }
                         }
+                    }
+                    if (mediaEntries.length > 0) {
+                        await updateMasterIndex(userSession, mediaEntries);
+                        props.worker?.postMessage({
+                            message: 'cacheindexes',
+                            indexFiles: mediaEntries.map(x => x.indexFile)
+                        })
                     }
                 }
 
@@ -444,10 +512,43 @@ export default function PublishVideo() {
                     sign: true,
                     wasString: true
                 });
+                updateMasterIndex(userSession, [{ indexFile: indexFile, mediaEntry: be.mediaEntry }]);
+                props.worker?.postMessage({
+                    message: "updatecache",
+                    indexFile: indexFile
+                });
                 if (mediaType === MediaType.Images) {
+                    if (props.photos) {
+                        for (let i = 0; i < props.photos?.length; i++) {
+                            let photo = props.photos[i];
+                            if (photo.browseEntry.mediaEntry.id === be.mediaEntry.id) {
+                                let newPhoto = { ...photo };
+                                newPhoto.browseEntry.mediaEntry = { ...be.mediaEntry };
+                                newPhoto.browseEntry.age = computeAge(be.mediaEntry.lastUpdatedUTC);
+                                let newPhotos = props.photos.slice();
+                                newPhotos.splice(i, 1);
+                                newPhotos.unshift(newPhoto);
+                                props.imagesLoadedCallback(newPhotos);
+                                break;
+                            }
+                        }
+                    }
                     history.push('/images/browse');
                 }
                 else {
+                    if (props.videos) {
+                        for (let i = 0; i < props.videos?.length; i++) {
+                            let video = props.videos[i];
+                            if (video.mediaEntry.id === be.mediaEntry.id) {
+                                let newVideo = { ...video, mediaEntry: be.mediaEntry };
+                                newVideo.age = computeAge(be.mediaEntry.lastUpdatedUTC);
+                                let newVideos = props.videos.slice();
+                                newVideos.splice(i, 1);
+                                newVideos.unshift(newVideo);
+                                props.videosLoadedCallback(newVideos);
+                            }
+                        }
+                    }
                     history.push('/videos/browse');
                 }
             }
@@ -526,7 +627,7 @@ export default function PublishVideo() {
     }, [userSession, id])
 
     return (
-        <div className={classes.root} style={{padding: 24}}>
+        <div className={classes.root} style={{ padding: 24 }}>
             <Stepper style={{ maxHeight: 800 }} activeStep={activeStep}>
                 {steps.map((label, index) => {
                     const stepProps: { completed?: boolean } = {};
@@ -550,7 +651,7 @@ export default function PublishVideo() {
                     </div>
                 ) : (
                         <div>
-                            <Box style={{ width: '100%', minHeight: 300, paddingLeft:30 }}>
+                            <Box style={{ width: '100%', minHeight: 300, paddingLeft: 30 }}>
                                 <FormControl>
                                     {getStepContent(activeStep)}
                                 </FormControl>

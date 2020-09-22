@@ -11,6 +11,7 @@ import { deleteImageEntry } from "../../utilities/data-utils";
 import MenuItem from '@material-ui/core/MenuItem';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import ConfirmDialog from "../confirm-dialog/ConfirmDialog";
+import { getImageSize } from "../../utilities/image-utils";
 
 interface CheckmarkProps {
   selected: boolean
@@ -92,6 +93,7 @@ export interface SelectedImageProps {
   left: string,
   selected: boolean,
   selectable: boolean,
+  totalCount: number,
   deleteCallback: DeletePhotoCallback,
   selectImageCallback: SelectImageCallback,
   toggleSelectionCallback: ToggleSelectionCallback
@@ -175,6 +177,15 @@ const SelectedImage = (props: SelectedImageProps) => {
   };
 
   function createPhoto(photo: Photo): any {
+    if (props.totalCount === 1) {
+      let size = getImageSize(photo.width, photo.height, 1024, 768);
+      return {
+        src: photo.src,
+        title: photo.title,
+        height: size[1],
+        width: size[0]
+      }
+    }
     return {
       src: photo.src,
       title: photo.title,
@@ -198,22 +209,31 @@ const SelectedImage = (props: SelectedImageProps) => {
     }
     return option
   }
+  
+  const photo = createPhoto(props.photo);
+  
+  const getConfirmMessage = (title: string | undefined) => {
+    if (props.selectable) {
+      return 'Are you sure you want to delete all selected images?'
+    }
+    return `Are you sure you want to delete ${title}?`
+  }
 
   return (
     <Box>
       <div
-        style={{ maxHeight: 600, maxWidth: 800, margin: props.margin, height: props.photo.height, width: props.photo.width, ...cont }}
+        style={{margin: props.margin, height: photo.height, width: photo.width, ...cont }}
         className={!isSelected ? "not-selected" : ""}
       >
-        <ConfirmDialog open={confirmOpen} item={menuMediaEntry} onResult={deleteConfirmResult} title="Confirm Delete" message={`Are you sure you want to delete ${menuMediaEntry?.title}?`} />
+        <ConfirmDialog open={confirmOpen} item={menuMediaEntry} onResult={deleteConfirmResult} title="Confirm Delete" message={getConfirmMessage(menuMediaEntry?.title)} />
 
         <Checkmark selected={isSelected ? true : false} />
-        <img
+        <img height={100} width={100}
           alt={props.photo.title}
           style={
             isSelected ? { ...imgStyle, ...selectedImgStyle } : { ...imgStyle }
           }
-          {...createPhoto(props.photo)}
+          {...createPhoto(photo)}
           onClick={handleOnClick}
         />
         <style>{`.not-selected:hover{outline:2px solid #06befa}`}</style>
