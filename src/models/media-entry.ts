@@ -1,6 +1,7 @@
 export enum MediaType {
     Video,
-    Images
+    Images,
+    UnencryptedVideo
 }
 
 export interface MediaEntry {

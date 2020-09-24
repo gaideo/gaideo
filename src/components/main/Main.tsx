@@ -408,7 +408,7 @@ export default function Main(props: MainProps) {
                         </Route>
                         <Route path="/videos/browse">
                             {userSession?.isUserSignedIn() ? (
-                                <div style={{ paddingTop: 30 }}>
+                                <div style={{ paddingTop: 10 }}>
                                     <BrowseVideos videos={videos} videosLoadedCallback={videosLoadedCallback} db={props.db} />
                                 </div>
                             ) : (
@@ -437,7 +437,8 @@ export default function Main(props: MainProps) {
                                     videos={videos}
                                     videosLoadedCallback={videosLoadedCallback}
                                     photos={photos}
-                                    imagesLoadedCallback={imagesLoadedCallback} />
+                                    imagesLoadedCallback={imagesLoadedCallback} 
+                                    isMobile={isMobile}/>
                             ) : (
                                     <Welcome />
                                 )
@@ -450,7 +451,8 @@ export default function Main(props: MainProps) {
                                     videos={videos}
                                     videosLoadedCallback={videosLoadedCallback}
                                     photos={photos}
-                                    imagesLoadedCallback={imagesLoadedCallback} />
+                                    imagesLoadedCallback={imagesLoadedCallback} 
+                                    isMobile={isMobile}/>
                             ) : (
                                     <Welcome />
                                 )

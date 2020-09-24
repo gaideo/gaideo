@@ -18,76 +18,11 @@ const themeObject: ThemeOptions = {
   }
 }
 
-export const GAIA_WORKER_INITIALIZE = 'GAIA_WORKER_INITIALIZE '
-
-interface GaiaWorkerInitializeAction {
-  type: typeof GAIA_WORKER_INITIALIZE
-}
-
-export type GaiaWorkerActionTypes = GaiaWorkerInitializeAction;
-
-// TypeScript infers that this function is returning SendMessageAction
-export function gaiaWorkerInitialize(): GaiaWorkerActionTypes {
-  return {
-    type: GAIA_WORKER_INITIALIZE
-  }
-}
-
 export default function App() {
   const setUserDataCallback = useCallback((userData: UserData | null) => {
     setUserData(userData);
-    if (userData) {
-      /*
-      userSession?.getFileUrl("deleteme", {
-        username: "gaideofounder.id.blockstack"
-      }).then(x => {
-        console.log(x)
-      })
-      */
-      /*      getNameInfo("gaideofounder.id.blockstack").then(x => {
-              resolveZoneFileToProfile(x.zonefile, x.address).then(y => {
-                console.log(y);
-                let profile = y as any;
-                if (profile) {
-                  let appMeta = profile.appsMeta[document.location.origin];
-                  if (appMeta) {
-                    let publicKey = Buffer.from(appMeta.publicKey, 'hex');
-                    let buffer = hashSha256Sync(publicKey);
-                    console.log(buffer.toString('hex'));
-                  }
-                  console.log(appMeta);
-                }
-              })
-            })
-              .catch(error => {
-                console.log(error);
-              })
-      */
-    }
-
   }, []);
 
-  const handleWorkerMessage = (e: any) => {
-    if (e.data.result) {
-      if (e.data.message === "loadcomplete") {
-        if (e.data.addedCount > 0 && !e.data.hasExisting) {
-          window.location.reload();
-        }
-      }
-      else if (e.data.message === "cacheindexescomplete") {
-        window.location.reload();
-      }
-      console.log(`Message ${e.data.message} succeeded`)
-    }
-    else {
-      console.log(`Message ${e.data.message} failed`);
-    }
-  }
-  const initGaiaWorker = () => {
-    let w = new Worker('/gaia-worker.js');
-    w.addEventListener('message', handleWorkerMessage);
-    return w;
-  }
 
   const initDatabase = async () => {
     let ret = await openDB("gaideodb", 1, {
@@ -113,7 +48,39 @@ export default function App() {
     return ret;
   }
 
-  const [worker] = useState(initGaiaWorker);
+  const initGaiaWorker = () => {
+    let w = new Worker('/scripts/workers/gaia-worker.js');
+    w.addEventListener('message', (e) => {
+      if (e.data.result) {
+        switch (e.data.message) {
+          case "ready":
+            let sessionData = localStorage.getItem("blockstack-session");
+            if (sessionData) {
+              w.postMessage({
+                message: "load",
+                sessionData: sessionData
+              })
+            }
+            break;
+          case "loadcomplete":
+            if (e.data.addedCount > 0 && !e.data.hasExisting) {
+              window.location.reload();
+            }
+            break;
+          case "cacheindexescomplete":
+            window.location.reload();
+            break;
+        }
+        console.log(`Message ${e.data.message} succeeded`)
+      }
+      else {
+        console.log(`Message ${e.data.message} failed`);
+      }
+    });
+    return w;
+  }
+
+  const [worker, setWorker] = useState<Worker | null>(null);
   const [db, setDB] = useState<IDBPDatabase<unknown> | null>(null);
 
   const [userData, setUserData] = useState<UserData | null>(null);
@@ -125,18 +92,6 @@ export default function App() {
     },
     userSession,
     finished: ({ userSession: UserSession }: any) => {
-      if (userSession?.isUserSignedIn()) {
-        let sessionData = localStorage.getItem("blockstack-session");
-        if (sessionData && worker) {
-          worker.postMessage({
-            message: "load",
-            sessionData: sessionData,
-            location: document.location.href,
-            origin: document.location.origin
-          });
-        }
-
-      }
     },
   };
 
@@ -146,31 +101,23 @@ export default function App() {
       if (userSession?.isUserSignedIn()) {
         let database = await initDatabase();
         setDB(database);
-        let sessionData = localStorage.getItem("blockstack-session");
-        if (sessionData && worker) {
-          worker.postMessage({
-            message: "load",
-            sessionData: sessionData,
-            location: document.location.href,
-            origin: document.location.origin
-          });
-        }
         let ud = userSession.loadUserData();
         setUserDataCallback(ud);
+        setWorker(initGaiaWorker());
       }
     }
     refresh();
     return () => {
     }
 
-  }, [worker, setUserDataCallback]);
+  }, [setUserDataCallback, setWorker ]);
 
   return (
     <ThemeProvider theme={themeConfig}>
       <Connect authOptions={authOptions}>
         <HashRouter>
-          
-          <Main userData={userData} setUserDataCallback={setUserDataCallback} db={db} worker={worker ? worker : null}/>
+
+          <Main userData={userData} setUserDataCallback={setUserDataCallback} db={db} worker={worker ? worker : null} />
         </HashRouter>
       </Connect>
     </ThemeProvider>

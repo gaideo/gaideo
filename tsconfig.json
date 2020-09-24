@@ -21,6 +21,6 @@
     "jsx": "react"
   },
   "include": [
-    "src", "public/gaia-worker.js"
+    "src", "public/scripts/workers/gaia-worker.js"
   ]
 }

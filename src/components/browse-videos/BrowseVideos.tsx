@@ -43,7 +43,7 @@ export function BrowseVideos(props: BrowseVideosProps) {
 
         const refresh = async () => {
             let arr: BrowseEntry[] = [];
-            /*
+            
             let deleteme: string[] = [];
             await userSession?.listFiles((name: string) => {
                 deleteme.push(name);
@@ -51,11 +51,11 @@ export function BrowseVideos(props: BrowseVideosProps) {
             });
             for (let i=0; i<deleteme.length; i++) {
                 console.log(deleteme[i]);
-                await userSession?.deleteFile(deleteme[i], {
+            /*    await userSession?.deleteFile(deleteme[i], {
                     wasSigned: false
-                })
+                })*/
             }
-            */
+            
             if (userSession && props.db) {
                 let cacheResults = await getCacheEntries(userSession, props.db, MediaType.Video, MAX_MORE, null);
                 if (cacheResults.cacheEntries?.length > 0) {
