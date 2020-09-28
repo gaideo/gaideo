@@ -12,6 +12,8 @@ import { MediaEntry, MediaType } from '../../models/media-entry';
 import { trackPromise } from 'react-promise-tracker';
 import { IDBPDatabase } from 'idb';
 import { VideosLoadedCallback } from '../../models/callbacks';
+import { UserSession } from 'blockstack';
+import { getImageSize } from '../../utilities/image-utils';
 
 const options = [
     'Share',
@@ -25,6 +27,7 @@ interface BrowseVideosProps {
     videos: BrowseEntry[];
     videosLoadedCallback: VideosLoadedCallback;
     db?: IDBPDatabase<unknown> | null | undefined;
+    worker: Worker | null;
 }
 
 export function BrowseVideos(props: BrowseVideosProps) {
@@ -43,19 +46,6 @@ export function BrowseVideos(props: BrowseVideosProps) {
 
         const refresh = async () => {
             let arr: BrowseEntry[] = [];
-            
-            let deleteme: string[] = [];
-            await userSession?.listFiles((name: string) => {
-                deleteme.push(name);
-                return true;
-            });
-            for (let i=0; i<deleteme.length; i++) {
-                console.log(deleteme[i]);
-            /*    await userSession?.deleteFile(deleteme[i], {
-                    wasSigned: false
-                })*/
-            }
-            
             if (userSession && props.db) {
                 let cacheResults = await getCacheEntries(userSession, props.db, MediaType.Video, MAX_MORE, null);
                 if (cacheResults.cacheEntries?.length > 0) {
@@ -65,8 +55,19 @@ export function BrowseVideos(props: BrowseVideosProps) {
                             let mediaEntry = JSON.parse(decryptedData);
                             let be = await loadBrowseEntryFromCache(userSession, mediaEntry, true) as BrowseEntry;
                             if (be) {
-                                arr.push(be);
-                                props.videosLoadedCallback(arr.slice())
+                                let img = new Image();
+                                let src = `data:image/png;base64, ${be.previewImage}`;
+                                img.onload = ev => {
+                                    const size = getImageSize(img.width, img.height, 400, 200);
+                                    be.previewImageWidth = size[0];
+                                    be.previewImageHeight = size[1];
+                                    be.actualHeight = img.height;
+                                    be.actualWidth = img.width;
+                                    arr.push(be);
+                                    props.videosLoadedCallback(arr.slice())
+                                };
+                                img.src = src;
+
                             }
                         }
                     }
@@ -94,8 +95,16 @@ export function BrowseVideos(props: BrowseVideosProps) {
                             let mediaEntry = JSON.parse(decryptedData);
                             let be = await loadBrowseEntryFromCache(userSession, mediaEntry, true) as BrowseEntry
                             if (be) {
-                                arr.push(be);
-                                props.videosLoadedCallback(arr.slice())
+                                let img = new Image();
+                                let src = `data:image/png;base64, ${be.previewImage}`;
+                                img.onload = ev => {
+                                    const size = getImageSize(img.width, img.height, 330, 183);
+                                    be.previewImageWidth = size[0];
+                                    be.previewImageHeight = size[1];
+                                    arr.push(be);
+                                    props.videosLoadedCallback(arr.slice())
+                                };
+                                img.src = src;
                             }
                         }
                     }
@@ -114,18 +123,24 @@ export function BrowseVideos(props: BrowseVideosProps) {
         }
     }
 
+    const deleteVideo = async (mediaEntry: MediaEntry, userSession: UserSession | undefined) => {
+        if (userSession) {
+            await deleteVideoEntry(mediaEntry, userSession, props.worker);
+        }
+    }
+
     const deleteConfirmResult = (item: any, result: boolean) => {
         setConfirmOpen(false);
         if (result) {
             let mediaEntry: MediaEntry = item as MediaEntry;
             if (mediaEntry) {
-                trackPromise(deleteVideoEntry(mediaEntry, userSession).then(x => { history.go(0) }))
+                trackPromise(deleteVideo(mediaEntry, userSession).then(x => { history.go(0) }))
             }
         }
     }
 
     const navVideo = (browseEntry: BrowseEntry) => {
-        history.push(`/videos/show/${browseEntry.mediaEntry.id}`)
+        history.push(`/videos/show/${browseEntry.mediaEntry.id}?height=${browseEntry.actualHeight}&width=${browseEntry.actualWidth}`)
     }
 
     const handleClick = (event: React.MouseEvent<HTMLElement>, mediaEntry: MediaEntry) => {
@@ -157,19 +172,34 @@ export function BrowseVideos(props: BrowseVideosProps) {
     return (
         <Fragment>
             <ConfirmDialog open={confirmOpen} item={menuMediaEntry} onResult={deleteConfirmResult} title="Confirm Delete" message={`Are you sure you want to delete ${menuMediaEntry?.title}?`} />
-            <Toolbar style={{ flexWrap: 'wrap' }}>
+            <Toolbar style={{ flexWrap: 'wrap', justifyContent: 'space-around' }}>
                 {props.videos.map(x => (
                     <div key={x.mediaEntry.id}>
-                        <div style={{ width: 331, height: 200, cursor: 'pointer' }} onClick={() => { navVideo(x); }}>
-                            <img id={x.mediaEntry.id} alt={x.mediaEntry.title} src={`data:image/png;base64, ${x.previewImage}`} />
+                        <div 
+                        style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            width: 331.734, 
+                            height: 173.641, 
+                            overflow: 'hidden',
+                            background: 'black',
+                            cursor: 'pointer',                             
+                            }} onClick={() => { navVideo(x); }}>
+                            <img
+                                style={{ marginLeft: 'auto', marginRight: 'auto' }}
+                                width={x.previewImageWidth}
+                                height={x.previewImageHeight}
+                                id={x.mediaEntry.id}
+                                alt={x.mediaEntry.title}
+                                src={`data:image/png;base64, ${x.previewImage}`} />
                         </div>
-                        <Toolbar style={{ justifyContent: 'space-between' }}>
+                        <Toolbar style={{ justifyContent: 'space-between' }} disableGutters={true}>
                             <div onClick={() => { navVideo(x) }}>
                                 <Typography variant="caption">{`${x.mediaEntry?.title} (${x.age})`}</Typography>
                             </div>
                             <div>
                                 <IconButton
-                                    style={{ minWidth: 30, outline: 'none' }}
+                                    style={{ minWidth: 30, outline: 'none', paddingTop: 0, paddingBottom: 0, paddingLeft: 5, paddingRight: 5 }}
                                     onClick={(e) => handleClick(e, x.mediaEntry)}
                                 >
                                     <MoreVertIcon />

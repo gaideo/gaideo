@@ -106,3 +106,7 @@ function getLongMonth(date: Date) {
 export function getLongDate(date: Date) {
     return `${date.getDate()} ${getLongMonth(date)} ${date.getFullYear()}`;
 }
+
+export function sleep(ms: number) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}

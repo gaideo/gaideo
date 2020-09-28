@@ -75,7 +75,6 @@ export function Friends(props: FriendsProps) {
     }, [userSession, updateFriendListCallback]);
 
     const filterFriends = async (inputValue: string) => {
-        console.log('getting friends');
         let friends: any = await getFriends(userSession);
         let options: any[] = [];
         for (let key in friends) {
@@ -125,7 +124,7 @@ export function Friends(props: FriendsProps) {
                                 loadOptions={promiseOptions}
                                 components={animatedComponents}
                                 isMulti
-                                onChange={(newValue, actionMeta) => { setSelectedFriends(newValue); console.log(newValue); console.log(actionMeta); }} />
+                                onChange={(newValue, actionMeta) => { setSelectedFriends(newValue); }} />
                         </div>
                         <div onClick={handleAddFriendOpen} style={{ cursor: 'pointer', paddingTop: 5, paddingLeft: 3, paddingRight: 3 }}><Icon><AddIcon /></Icon></div>
                         <div onClick={handleDeleteFriend} style={{ cursor: 'pointer', paddingTop: 5, paddingLeft: 3, paddingRight: 3 }}><Icon><DeleteIcon /></Icon></div>

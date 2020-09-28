@@ -14,40 +14,15 @@ import { trackPromise } from 'react-promise-tracker';
 import { useHistory, useParams } from 'react-router-dom';
 import { createHashAddress, deleteVideoEntry, createPrivateKey, loadBrowseEntry, updateMasterIndex, getPrivateKey } from '../../utilities/data-utils';
 import { computeAge, getNow } from '../../utilities/time-utils';
-import { getEntropy, getPublicKeyFromPrivate, makeUUID4, UserSession } from 'blockstack';
+import { getPublicKeyFromPrivate, makeUUID4, UserSession } from 'blockstack';
 import { BrowseEntry } from '../../models/browse-entry';
 import { Photo } from '../../models/photo';
-import { ImagesLoadedCallback, VideosLoadedCallback } from '../../models/callbacks';
+import { ImagesLoadedCallback, UpdateProgressCallback, VideosLoadedCallback } from '../../models/callbacks';
 import { readBinaryFile } from '../../utilities/file-utils';
 import { MediaFileEntry } from '../../models/media-file-entry';
+import { computeNameFromImageFile, encryptVideo } from '../../utilities/ffmpeg-utils';
 
 interface ParamTypes { id: string; }
-
-enum FFMpegInputType {
-    PreviewImage,
-    GetDimensions,
-    HlsWithDimensions,
-    HlsDynamic
-}
-
-interface FFMpegFile {
-    name: string,
-    data: ArrayBuffer
-}
-
-interface FFMpegVideoDimension {
-    width: number;
-    height: number;
-}
-
-interface FFMpegInput {
-    file: any,
-    inputType: FFMpegInputType,
-    output?: string,
-    dimensions?: FFMpegVideoDimension,
-    keyData?: ArrayBuffer,
-    keyInfoData?: ArrayBuffer
-}
 
 const useStyles = makeStyles((theme: Theme) =>
     createStyles({
@@ -70,7 +45,8 @@ interface PublishVideoProps {
     photos: Photo[] | null;
     videosLoadedCallback: VideosLoadedCallback;
     imagesLoadedCallback: ImagesLoadedCallback;
-    isMobile: boolean
+    isMobile: boolean;
+    updateProgressCallback: UpdateProgressCallback;
 }
 
 export default function PublishVideo(props: PublishVideoProps) {
@@ -215,7 +191,9 @@ export default function PublishVideo(props: PublishVideoProps) {
         if (lowerCase) {
             lname = name.toLocaleLowerCase();
         }
-        return lname.endsWith('.mp4');
+        return lname.endsWith('.mp4') 
+            || lname.endsWith('.mov')
+            || lname.endsWith('.avi');
     }
 
     const validateUpload: ValidateUploadResultDelegate = (filesToUpload) => {
@@ -256,6 +234,11 @@ export default function PublishVideo(props: PublishVideoProps) {
                     hasError = true;
                     break;
                 }
+                if (!imageName && lname.indexOf(' ') >= 0) {
+                    hasError = true;
+                    errorMessage = "Video files cannot have spaces in the name.";
+                    break;
+                }
                 if (imageName) {
                     imageCount++;
                 }
@@ -272,22 +255,24 @@ export default function PublishVideo(props: PublishVideoProps) {
                     foundKey = true;
                 }
             }
-            if (unencryptedVideoCount > 0 && (unencryptedVideoCount > 1 || unencryptedVideoCount < filesToUpload.length)) {
-                errorMessage = "You can only upload one unencrypted video at a time.";
-                hasError = true;
-            }
-            else if (imageCount > 0 && imageCount < filesToUpload.length) {
-                errorMessage = "You cannot upload photos with any other media type."
-                hasError = true;
-            }
-            else if (imageCount === 0 && unencryptedVideoCount === 0 && (!foundKey || !previewImageName)) {
-                if (!foundKey) {
-                    errorMessage = "Missing key file for HLS stream.";
+            if (!hasError) {
+                if (unencryptedVideoCount > 0 && (unencryptedVideoCount > 1 || unencryptedVideoCount < filesToUpload.length)) {
+                    errorMessage = "You can only upload one unencrypted video at a time.";
+                    hasError = true;
                 }
-                else if (!previewImageName) {
-                    errorMessage = "Missing preview image for HLS stream. Preview files must end with '_preview.jpg'";
+                else if (imageCount > 0 && imageCount < filesToUpload.length) {
+                    errorMessage = "You cannot upload photos with any other media type."
+                    hasError = true;
                 }
-                hasError = true;
+                else if (imageCount === 0 && unencryptedVideoCount === 0 && (!foundKey || !previewImageName)) {
+                    if (!foundKey) {
+                        errorMessage = "Missing key file for HLS stream.";
+                    }
+                    else if (!previewImageName) {
+                        errorMessage = "Missing preview image for HLS stream. Preview files must end with '_preview.jpg'";
+                    }
+                    hasError = true;
+                }
             }
 
             if (!hasError
@@ -326,7 +311,7 @@ export default function PublishVideo(props: PublishVideoProps) {
                         createdDateUTC: nowUTC,
                         lastUpdatedUTC: nowUTC,
                         mediaType: MediaType.UnencryptedVideo,
-                        previewImageName: filesToUpload[0].name.replace(".mp4", "")
+                        previewImageName: computeNameFromImageFile(filesToUpload[0].name)
                     }
                     return mediaEntry;
                 }
@@ -383,13 +368,7 @@ export default function PublishVideo(props: PublishVideoProps) {
             if (needEncryptVideoFile(file.name)) {
                 let data;
                 if (file.data) {
-                    let uintArr = file.data as Uint8Array;
-                    if (uintArr) {
-                        data = Buffer.from(uintArr);
-                    }
-                    else {
-                        data = file.data;
-                    }
+                    data = file.data;
                 }
                 else {
                     data = await readBinaryFile(file);
@@ -417,13 +396,7 @@ export default function PublishVideo(props: PublishVideoProps) {
             else {
                 let data;
                 if (file.data) {
-                    let uintArr = file.data as Uint8Array;
-                    if (uintArr) {
-                        data = Buffer.from(uintArr);
-                    }
-                    else {
-                        data = file.data;
-                    }
+                    data = file.data;
                 }
                 else {
                     data = file;
@@ -524,179 +497,10 @@ export default function PublishVideo(props: PublishVideoProps) {
         setActiveStep((prevActiveStep) => prevActiveStep + 1);
     }
 
-    function sleep(ms: number) {
-        return new Promise(resolve => setTimeout(resolve, ms));
-    }
-    const runFFMeg = async (input: FFMpegInput) => {
-        let data = await readBinaryFile(input.file);
-        const worker = new Worker("/scripts/workers/ffmpeg-worker-mp4.js");
-        let done = false;
-        let result: any = {
-            result: null,
-            error: ''
-        };
-        let dimWidth: number = 0;
-        let dimHeight: number = 0;
-        worker.onmessage = function (e) {
-            const msg = e.data;
-            const dimensionRegex = /Stream.+([0-9]{3}x[0-9]{3})/g;
-            switch (msg.type) {
-                case "ready":
-                    let args: string[];
-                    if (input.inputType === FFMpegInputType.GetDimensions) {
-                        args = ["-y", "-i", `${input.file.name}`];
-                        worker.postMessage({
-                            MEMFS: [
-                                { name: input.file.name, data: data },
-                            ],
-                            type: "run",
-                            arguments: args
-                        });
-                    }
-                    else if (input.inputType === FFMpegInputType.PreviewImage) {
-                        if (!input.output) {
-                            result.error = 'Missing output file name.'
-                        }
-                        else {
-                            let w = 332;
-                            let h = 200;
-                            if (input.dimensions && input.dimensions.height > 0 && input.dimensions.width > 0) {
-                                w = input.dimensions.width;
-                                h = input.dimensions.height;
-                            }
-                            args = ["-y", "-i", `${input.file.name}`, "-an", "-ss", "5", "-vframes", "1", "-s", `${w}x${h}`, input.output];
-                            worker.postMessage({
-                                MEMFS: [
-                                    { name: input.file.name, data: data },
-                                ],
-                                type: "run",
-                                arguments: args
-                            });
-                        }
-                    }
-                    else if (input.inputType === FFMpegInputType.HlsWithDimensions) {
-                        if (!input.dimensions) {
-                            result.error = 'Missing dimensions for video.'
-                        }
-                        else {
-                            args = ["-y", "-i", `${input.file.name}`,
-                                "-c:v", "libx264", "-profile:v", "high",
-                                "-g", "96", "-s", `${input.dimensions.width}x${input.dimensions.height}`, "-start_number", "0",
-                                "-hls_time", "10", "-hls_list_size", "0", "-f", "hls",
-                                "-hls_key_info_file", "key.info", `video${input.dimensions.height}-stream.m3u8`, "-master_pl_name", "master.m3u8",
-                            ];
-                            worker.postMessage({
-                                MEMFS: [
-                                    { name: input.file.name, data: data },
-                                    { name: "key.info", data: input.keyInfoData },
-                                    { name: "key.bin", data: input.keyData }
-                                ],
-                                type: "run",
-                                arguments: args
-                            });
-                        }
-                    }
-                    else {
-                        args = ["-y", "-i", `${input.file.name}`,
-
-                            "-c:v", "libx264", "-profile:v", "high", "-level", "4.2", "-b:v", "500k", "-minrate", "500k", "-maxrate", "500k", "-bufsize", "1000k",
-                            "-g", "96", "-s", "426x240", "-start_number", "0", "-hls_time", "10", "-hls_list_size", "0", "-f", "hls",
-                            "-hls_key_info_file", "key.info", "video240-stream.m3u8", "-master_pl_name", "master.m3u8",
-
-                            "-c:v", "libx264", "-profile:v", "high", "-level", "4.2", "-b:v", "1000k", "-minrate", "1000k", "-maxrate", "1000k", "-bufsize", "2000k",
-                            "-g", "96", "-s", "640x360", "-start_number", "0", "-hls_time", "10", "-hls_list_size", "0", "-f", "hls",
-                            "-hls_key_info_file", "key.info", "video360-stream.m3u8", "-master_pl_name", "master.m3u8",
-
-                            "-c:v", "libx264", "-profile:v", "high", "-level", "4.2", "-b:v", "1500k", "-minrate", "1500k", "-maxrate", "1500k", "-bufsize", "3000k",
-                            "-g", "96", "-s", "852x480", "-start_number", "0", "-hls_time", "10", "-hls_list_size", "0", "-f", "hls",
-                            "-hls_key_info_file", "key.info", "video480-stream.m3u8", "-master_pl_name", "master.m3u8",
-
-                            "-c:v", "libx264", "-profile:v", "high", "-level", "4.2", "-b:v", "2000k", "-minrate", "2000k", "-maxrate", "2000k", "-bufsize", "4000k",
-                            "-g", "96", "-s", "1280x720", "-start_number", "0", "-hls_time", "10", "-hls_list_size", "0", "-f", "hls",
-                            "-hls_key_info_file", "key.info", "video720-stream.m3u8", "-master_pl_name", "master.m3u8"
-                        ];
-                        worker.postMessage({
-                            MEMFS: [
-                                { name: input.file.name, data: data },
-                                { name: "key.info", data: input.keyInfoData },
-                                { name: "key.bin", data: input.keyData }
-                            ],
-                            type: "run",
-                            arguments: args
-                        });
-                    }
-                    break;
-                case "stdout":
-                    console.log(msg.data);
-                    break;
-                case "stderr":
-                    console.log(msg.data);
-                    if (input.inputType === FFMpegInputType.GetDimensions) {
-                        let dimResult = dimensionRegex.exec(msg.data);
-                        if (dimResult?.length === 2) {
-                            let xIdx = dimResult[1].indexOf('x');
-                            dimWidth = parseInt(dimResult[1].substring(0, xIdx));
-                            dimHeight = parseInt(dimResult[1].substring(xIdx + 1));
-                        }
-                    }
-                    break;
-                case "done":
-                    done = true;
-                    if (input.inputType === FFMpegInputType.GetDimensions) {
-                        result.result = {
-                            width: dimWidth,
-                            height: dimHeight
-                        }
-                    }
-                    else {
-                        result.result = msg.data;
-                    }
-                    break;
-            }
-        };
-        while (!done) {
-            await sleep(1000);
-        }
-
-        return result;
-    }
-
-    const createM3u8Data = (dimensions: FFMpegVideoDimension | null | undefined) => {
-        let mp3uText;
-        if (!dimensions) {
-            mp3uText = `\
-#EXTM3U\n\
-#EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=2000000,CODECS="mp4a.40.5,avc1.42000d",RESOLUTION=1280x720,NAME="720"\n\
-video720-stream.m3u8\n\
-#EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=500000,CODECS="mp4a.40.5,avc1.42000d",RESOLUTION=426x240,NAME="240"\n\
-video240-stream.m3u8\n\
-#EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=1000000,CODECS="mp4a.40.5,avc1.42000d",RESOLUTION=640x360,NAME="360"\n\
-video360-stream.m3u8\n\
-#EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=1500000,CODECS="mp4a.40.5,avc1.42000d",RESOLUTION=852x480,NAME="480"
-video480-stream.m3u8\n`
-        }
-        else {
-            let bandwidth = 2000000;
-            if (dimensions.height < 360) {
-                bandwidth = 500000;
-            }
-            else if (dimensions.height < 480) {
-                bandwidth = 1000000;
-            }
-            else if (dimensions.height < 720) {
-                bandwidth = 1500000;
-            }
-            mp3uText = `\
-#EXTM3U\n\
-#EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=${bandwidth},CODECS="mp4a.40.5,avc1.42000d",RESOLUTION=${dimensions.width}x${dimensions.height},NAME="${dimensions.height}"\n\
-video${dimensions.height}-stream.m3u8\n`
-        }
-        var enc = new TextEncoder();
-        return new Uint8Array(enc.encode(mp3uText));
-    }
-
     const saveVideoFiles = async (userSession: UserSession, mediaEntry: MediaEntry, files: any[]) => {
         let fname = `videos/${mediaEntry.id}.index`;
+
+        props.updateProgressCallback(`Uploading index file...`, null);
         await userSession.putFile(fname, JSON.stringify(mediaEntry), {
             encrypt: true,
             wasString: true,
@@ -705,6 +509,7 @@ video${dimensions.height}-stream.m3u8\n`
         let failed = false;
         let keyExists = false;
         for (let i = 0; i < files.length; i++) {
+            props.updateProgressCallback(`Uploading ${files[i].name} (${i+1}/${files.length})...`, null);
             if (files[i].name !== 'keys') {
                 let success = await uploadVideo(files[i], mediaEntry, userSession, keyExists)
                 if (!success) {
@@ -720,7 +525,7 @@ video${dimensions.height}-stream.m3u8\n`
             }
         }
         if (failed) {
-            deleteVideoEntry(mediaEntry, userSession);
+            deleteVideoEntry(mediaEntry, userSession, null);
         }
         else {
             await updateMasterIndex(userSession, [{ indexFile: fname, mediaEntry: mediaEntry }]);
@@ -731,16 +536,6 @@ video${dimensions.height}-stream.m3u8\n`
         }
     }
 
-    const computePreviewFileName = (videoFileName: string) => {
-        let index = videoFileName.lastIndexOf(".");
-        let ret = videoFileName;
-        if (index >= 0) {
-            ret = videoFileName.substring(0, index);
-        }
-        ret = `${ret}_preview.jpg`;
-        return ret;
-    }
-
     const doUpload = async (result: any) => {
         setUploadFilesError(false)
         setUploadFilesErrorMessage("");
@@ -749,89 +544,12 @@ video${dimensions.height}-stream.m3u8\n`
             setUploading(true);
             try {
                 if (mediaEntry.mediaType === MediaType.UnencryptedVideo) {
-                    let hlsFiles: FFMpegFile[] = [];
-                    if (mediaEntry.previewImageName) {
-                        let keyData = getEntropy(32);
-                        let keyInfo = "key.bin\nkey.bin\n";
-                        let dimensions: FFMpegVideoDimension | null | undefined;
-                        var enc = new TextEncoder();
-                        let keyInfoData = new Uint8Array(enc.encode(keyInfo));
-                        let result = await runFFMeg({
-                            file: files[0],
-                            inputType: FFMpegInputType.GetDimensions
-                        });
-                        if (!result.error) {
-                            dimensions = result.result as FFMpegVideoDimension;
-                            result = await runFFMeg({
-                                file: files[0],
-                                inputType: FFMpegInputType.PreviewImage,
-                                output: computePreviewFileName(mediaEntry.previewImageName),
-                                dimensions: dimensions
-                            });
-                            let memfs = result.result?.MEMFS;
-                            if (!result.error && memfs?.length > 0 && !result.error) {
-                                let previewFile = memfs[0];
-                                if (!memfs[0].name.endsWith("_preview.jpg")) {
-                                    previewFile = { ...memfs[0], name: `${memfs[0].name}_preview.jpg` }
-                                }
-                                hlsFiles.push(previewFile);
-                                mediaEntry.id = createHashAddress([mediaEntry.id, previewFile.name.replace('_preview.jpg', '')]);
-                                mediaEntry.previewImageName = `videos/${mediaEntry.id}/${previewFile.name}`;
-
-                                if (dimensions) {
-                                    result = await runFFMeg({
-                                        file: files[0],
-                                        inputType: FFMpegInputType.HlsWithDimensions,
-                                        output: `video${dimensions.height}-stream.m3u8`,
-                                        dimensions: dimensions,
-                                        keyData: keyData,
-                                        keyInfoData: keyInfoData
-                                    });
-                                }
-                                else {
-                                    result = await runFFMeg({
-                                        file: files[0],
-                                        inputType: FFMpegInputType.HlsDynamic,
-                                        keyData: keyData,
-                                        keyInfoData: keyInfoData
-                                    });
-                                }
-                                if (!result.error) {
-                                    memfs = result.result?.MEMFS;
-                                    if (memfs?.length > 0) {
-                                        for (let i = 0; i < memfs.length; i++) {
-                                            hlsFiles.push(memfs[i]);
-                                        }
-                                        hlsFiles.push({
-                                            name: "master.m3u8",
-                                            data: createM3u8Data(dimensions)
-                                        });
-                                        hlsFiles.push({
-                                            name: "key.bin",
-                                            data: keyData
-                                        });
-
-
-                                        mediaEntry.manifest = hlsFiles.map(x => x.name);
-                                        mediaEntry.mediaType = MediaType.Video;
-                                        await saveVideoFiles(userSession, mediaEntry, hlsFiles);
-                                    }
-                                    else {
-                                        result.error = "Unknown error. No encrypted hls files were generated."
-                                    }
-
-                                }
-                            }
-                            else {
-                                result.error = 'Unknown error. Could not generate preview image.'
-                            }
-                        }
-                        if (result.error) {
-                            Promise.reject(result.error);
-                        }
+                    let encryptResult = await encryptVideo(mediaEntry, files[0], props.updateProgressCallback);
+                    if (encryptResult.mediaEntry && encryptResult.hlsFiles) {
+                        await saveVideoFiles(userSession, encryptResult.mediaEntry, encryptResult.hlsFiles);
                     }
                     else {
-                        Promise.reject("No preview image name specified.");
+                        Promise.reject(encryptResult.errorMessage);
                     }
                 }
                 else if (mediaEntry.mediaType === MediaType.Video) {
@@ -839,8 +557,9 @@ video${dimensions.height}-stream.m3u8\n`
                 }
                 else if (mediaEntry.mediaType === MediaType.Images) {
                     let mediaEntries: MediaFileEntry[] = [];
-                    for (let i = 0; i < files.length; i++) {
-                        if (files[i].name !== 'keys') {
+                    for (let i = 0; i < files.length; i++) {                        
+                        props.updateProgressCallback(`Uploading ${files[i].name} (${i+1}/${files.length})`, null)
+                        if (files[i].name !== 'keys') {                            
                             let me = await uploadImage(files[i], mediaEntry, userSession);
                             if (me) {
                                 mediaEntries.push(me);

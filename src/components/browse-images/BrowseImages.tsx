@@ -26,8 +26,9 @@ interface BrowseImagesProps {
     db: IDBPDatabase<unknown> | null;
     imagesLoadedCallback: ImagesLoadedCallback;
     toggleCloseCallback: ToggleCloseCallback;
-    slideShowIndex: number | null
+    slideShowIndex: number | null;
     setSlideShowIndexCallback: SetSlideShowIndexCallback;
+    worker: Worker | null;
 }
 
 export function BrowseImages(props: BrowseImagesProps) {
@@ -74,6 +75,7 @@ export function BrowseImages(props: BrowseImagesProps) {
                 let cacheResults = await getCacheEntries(userSession, props.db, MediaType.Images, MAX_MORE, null);
                 if (cacheResults.cacheEntries?.length > 0) {
                     for (let i = 0; i < cacheResults.cacheEntries?.length; i++) {
+
                         let decryptedData = await userSession.decryptContent(cacheResults.cacheEntries[i].data) as string;
                         if (decryptedData) {
                             let mediaEntry = JSON.parse(decryptedData);
@@ -191,7 +193,7 @@ export function BrowseImages(props: BrowseImagesProps) {
     const deleteSelectedCallback = useCallback(() => {
         const removeSelectedImages = async (arr: MediaEntry[]) => {
             for (let j = 0; j < arr.length; j++) {
-                await deleteImageEntry(arr[j], userSession);
+                await deleteImageEntry(arr[j], userSession, props.worker);
             }
             history.go(0);
         }
@@ -204,7 +206,7 @@ export function BrowseImages(props: BrowseImagesProps) {
         if (removeArray.length > 0) {
             trackPromise(removeSelectedImages(removeArray));
         }
-    }, [history, props.photos, userSession]);
+    }, [history, props.photos, userSession, props.worker]);
 
     const closeSlideShowCallback = useCallback(() => {
         props.setSlideShowIndexCallback(null);
@@ -228,23 +230,24 @@ export function BrowseImages(props: BrowseImagesProps) {
                     selectImageCallback={selectImageCallback}
                     toggleSelectionCallback={toggleSelectionCallback}
                     deleteSelectedCallback={deleteSelectedCallback}
+                    worker={props.worker}
                 />
             </Box>
         ),
-        [deletePhotoCallback, selectImageCallback, toggleSelectionCallback, isSelectable, deleteSelectedCallback, props.photos.length]
+        [deletePhotoCallback, selectImageCallback, toggleSelectionCallback, isSelectable, deleteSelectedCallback, props.photos.length, props.worker]
 
     );
 
     return (
         <Fragment>
             { props.slideShowIndex != null ? (
-                <SlideShow
+                    <SlideShow
                     images={props.photos}
                     current={props.slideShowIndex}
                     closeSlideShowCallback={closeSlideShowCallback}
                 />
             ) : (
-                    <div>
+                    <div style={{paddingLeft: 22}}>
                         <Gallery photos={props.photos} direction={"row"}  renderImage={imageRenderer} />
                         {props.photos.length >= MAX_MORE &&
                             <div style={{ display: 'flex', justifyContent: 'center' }}>

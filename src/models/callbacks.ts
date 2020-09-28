@@ -10,3 +10,8 @@ export interface ImagesLoadedCallback {
     (photos: Photo[]): void
 }
 
+export interface UpdateProgressCallback {
+    (message: string | null, subMessage: string | null): void
+}
+
+

@@ -70,6 +70,9 @@ export default function App() {
           case "cacheindexescomplete":
             window.location.reload();
             break;
+          case "deletedbcomplete":
+            window.location.reload();
+            break;
         }
         console.log(`Message ${e.data.message} succeeded`)
       }

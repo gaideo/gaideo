@@ -1,30 +1,36 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useConnect } from '@blockstack/connect';
 import Hls from "hls.js";
 import "../browse-videos/BrowseVideos.css";
-import { useParams, useHistory } from 'react-router-dom';
+import { useParams, useHistory, useLocation } from 'react-router-dom';
 import { VideoDescription } from './VideoDescription';
-import { useWindowSize } from '../../effects/size-effect';
 import { getEncryptedMediaFile } from '../../utilities/data-utils';
 import { MediaType } from '../../models/media-entry';
+import { getImageSize } from '../../utilities/image-utils';
 
 interface VideoPlayerContext {
   current: any;
 }
 
-interface ParamTypes {   id: string; } 
+interface ParamTypes { id: string; width: string, height: string} 
 
-export function VideoPlayer() {
+interface VideoPlayerProps {
+  isMobile: boolean
+}
+
+export function VideoPlayer(props: VideoPlayerProps) {
   const { authOptions } = useConnect();
   const { userSession } = authOptions;
   const  {id} = useParams<ParamTypes>();
+  const videoRef = useRef<HTMLVideoElement>(null);
   const history = useHistory();
+  const location = useLocation();
+  const [width, setWidth] = useState<number | undefined>();
+  const [height, setHeight] = useState<number | undefined>();
 
   const context: VideoPlayerContext = {
     current: {}
   };
-
-  const [width, height] = useWindowSize('videoParent');
 
   function process(playlist: any) {
     return context.current.videoKey as ArrayBuffer;
@@ -51,7 +57,18 @@ export function VideoPlayer() {
     let hls: Hls | null;
     const playVideo = async () => {
       if (Hls.isSupported() && userSession) {
+        const widthRegex = /width=([0-9]{3,5})/g
+        const heightRegex = /height=([0-9]{3,5})/g
+              const heightResult = heightRegex.exec(location.search);
+        if (heightResult?.length === 2) {
+          const widthResult = widthRegex.exec(location.search);
+          if (widthResult?.length === 2) {
+            const size = getImageSize(parseInt(widthResult[1]), parseInt(heightResult[1]), 1280, 720);
+            setWidth(size[0]);
+            setHeight(size[1]);
 
+          }
+        }
         let videoKey = await getEncryptedMediaFile(userSession, `videos/${id}/key.bin`, id, MediaType.Video);
         if (videoKey) {
           context.current.videoKey = videoKey;
@@ -68,12 +85,8 @@ export function VideoPlayer() {
               let playPromise = video.play();
               if (playPromise !== undefined) {
                 playPromise.then((_: any) => {
-                  // Automatic playback started!
-                  // Show playing UI.
                 })
                   .catch((error: any) => {
-                    // Auto-play was prevented
-                    // Show paused UI.
                   });
               }
             });
@@ -94,13 +107,12 @@ export function VideoPlayer() {
         hls.destroy();
       }
     }
-  }, [userSession, customLoader, id, history, context]);
+  }, [userSession, customLoader, id, history, context, location.search]);
 
+  
   return (
-    <div>
-      <div id="videoParent" style={{ height:"calc(70vh", paddingLeft: 20 }}>
-        <video id="video" width={width-20} height={height} style={{ objectFit: "initial" }} controls></video>
-      </div>
-      <VideoDescription />
+    <div style={{paddingLeft: props.isMobile ? 0 : 22}}>
+          <video ref={videoRef} id="video" width="100%" style={{maxWidth: width, maxHeight: height}} controls></video>
+          <VideoDescription/>
     </div>  );
 }

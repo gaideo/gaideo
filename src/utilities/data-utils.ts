@@ -10,7 +10,7 @@ import { MediaFileEntry } from "../models/media-file-entry";
 import { UserData } from "blockstack/lib/auth/authApp";
 
 
-export async function deleteVideoEntry(mediaEntry: MediaEntry, userSession: any) {
+export async function deleteVideoEntry(mediaEntry: MediaEntry, userSession: any, worker: Worker | null) {
     if (mediaEntry?.manifest?.length > 0) {
         try {
             let previewFile: string | null = null;
@@ -45,6 +45,10 @@ export async function deleteVideoEntry(mediaEntry: MediaEntry, userSession: any)
                 wasSigned: false
             });
             await updateMasterIndex(userSession, [{ indexFile: indexUrl, mediaEntry: mediaEntry }], undefined, true);
+            worker?.postMessage({
+                message: "removecache",
+                indexFile: indexUrl
+            })
 
         }
         catch (ex) {
@@ -167,7 +171,7 @@ export async function updateMasterIndex(
     }
 }
 
-export async function deleteImageEntry(mediaEntry: MediaEntry, userSession: any) {
+export async function deleteImageEntry(mediaEntry: MediaEntry, userSession: any, worker: Worker | null) {
     if (mediaEntry?.manifest?.length > 0) {
         for (let i = 0; i < mediaEntry.manifest.length; i++) {
             let entry = mediaEntry.manifest[i];
@@ -187,7 +191,11 @@ export async function deleteImageEntry(mediaEntry: MediaEntry, userSession: any)
             wasSigned: false
         });
         await updateMasterIndex(userSession, [{ indexFile: indexUrl, mediaEntry: mediaEntry }], undefined, true);
-    }
+        worker?.postMessage({
+            message: "removecache",
+            indexFile: indexUrl
+          })
+        }
 
 }
 

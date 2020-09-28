@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { makeStyles, Divider, List, ListItem, ListItemText, AppBar, Toolbar, Drawer, Typography, Hidden, IconButton, Button, Menu, MenuItem, CircularProgress, Backdrop } from "@material-ui/core";
+import React, { useState, useEffect, useCallback, Fragment } from 'react';
+import { makeStyles, Divider, List, ListItem, ListItemText, AppBar, Toolbar, Drawer, Typography, Hidden, IconButton, Button, Menu, MenuItem, CircularProgress, Backdrop, Icon, LinearProgress } from "@material-ui/core";
 import MenuIcon from '@material-ui/icons/MenuOutlined';
 import PublishIcon from '@material-ui/icons/PublishOutlined';
 import MovieIcon from '@material-ui/icons/MovieOutlined';
@@ -12,7 +12,7 @@ import { UserData } from 'blockstack/lib/auth/authApp';
 import AccountCircle from '@material-ui/icons/AccountCircle';
 import CloseIcon from '@material-ui/icons/CloseOutlined';
 import { useHistory, Route, Switch, Redirect, useRouteMatch } from 'react-router-dom';
-import { usePromiseTracker } from 'react-promise-tracker';
+import { trackPromise, usePromiseTracker } from 'react-promise-tracker';
 import { VideoPlayer } from '../video-player/VideoPlayer';
 import PublishVideo from '../publish-media/PublishMedia';
 import { VideoEncryption } from '../video-encryption/VideoEncryption';
@@ -27,6 +27,8 @@ import { BrowseVideos } from '../browse-videos/BrowseVideos';
 import { IDBPDatabase } from 'idb';
 import { Friends } from '../community/Friends';
 import { Community } from '../community/Community';
+import ProfileDialog from '../profile-dialog/ProfileDialog';
+import ConfirmDialog from '../confirm-dialog/ConfirmDialog';
 
 const drawerWidth = 240;
 
@@ -35,10 +37,10 @@ interface SetUserDataCallback {
 }
 
 interface MainProps {
-    userData: UserData | null
-    setUserDataCallback: SetUserDataCallback,
-    db: IDBPDatabase<unknown> | null,
-    worker: Worker | null
+    userData: UserData | null;
+    setUserDataCallback: SetUserDataCallback;
+    db: IDBPDatabase<unknown> | null;
+    worker: Worker | null;
 }
 
 export default function Main(props: MainProps) {
@@ -49,6 +51,11 @@ export default function Main(props: MainProps) {
     const welcomeRoute = useRouteMatch("/welcome");
     const browseImagesRoute = useRouteMatch("/images/browse");
     const [slideShowIndex, setSlideShowIndex] = useState<number | null>(null);
+    const [progressMessage, setProgressMessage] = useState<string | null>(null);
+    const [progressSubMessage, setProgressSubMessage] = useState<string | null>(null);
+    const [profileOpen, setProfileOpen] = useState(false);
+    const [confirmResetCacheOpen, setConfirmResetCacheOpen] = React.useState(false);
+    const [confirmDeleteAllOpen, setConfirmDeleteAllOpen] = React.useState(false);
 
     const useStyles = makeStyles((theme) => ({
         drawer: {
@@ -182,6 +189,15 @@ export default function Main(props: MainProps) {
         else if (option === 'friends') {
             setShowFriends(true);
         }
+        else if (option === 'profile') {
+            setProfileOpen(true);
+        }
+        else if (option === 'resetcache') {
+            setConfirmResetCacheOpen(true)
+        }
+        else if (option === 'deleteall') {
+            setConfirmDeleteAllOpen(true)
+        }
         handleClose();
     };
 
@@ -242,6 +258,61 @@ export default function Main(props: MainProps) {
         setShowFriends(show);
     }, []);
 
+    const updateProgressCallback = useCallback((message: string | null, subMessage: string | null) => {
+        setProgressMessage(message);
+        setProgressSubMessage(subMessage);
+    }, []);
+
+    const setProfileDialogOpenCallback = useCallback((open: boolean) => {
+        setProfileOpen(open);
+    }, []);
+
+    const resetCachedIndexes = async () => {
+        try {
+            await props.db?.close();
+            props.worker?.postMessage({
+                message: 'deletedb',
+            });
+        }
+        catch (error) {
+            console.log(error);
+        }
+    }
+
+    const deleteAll = async () => {
+
+        let deleteme: string[] = [];
+        try {
+            await userSession?.listFiles((name: string) => {
+                deleteme.push(name);
+                return true;
+            });
+            for (let i = 0; i < deleteme.length; i++) {
+                setProgressMessage(`Deleting ${deleteme[i]} (${i+1}/${deleteme.length})`);
+                await userSession?.deleteFile(deleteme[i])
+            }
+
+        }
+        catch (error) {
+            console.log(`Unable to delete all data: ${error}.`);
+        }
+        await resetCachedIndexes();
+    }
+
+    const resetCacheConfirmResult = (item: any, result: boolean) => {
+        setConfirmResetCacheOpen(false);
+        if (result) {
+            trackPromise(resetCachedIndexes());
+        }
+    }
+
+    const deleteAllConfirmResult = (item: any, result: boolean) => {
+        setConfirmDeleteAllOpen(false);
+        if (result) {
+            trackPromise(deleteAll());
+        }
+    }
+
     const drawer = (
         <div>
             <div>
@@ -286,7 +357,35 @@ export default function Main(props: MainProps) {
             {
                 promiseInProgress &&
                 <Backdrop className={classes.backdrop} open={promiseInProgress}>
-                    <CircularProgress color="inherit" />
+                    {progressMessage ? (
+                        <div style={{
+                            backgroundColor: 'gray',
+                            borderRadius: 16,
+                            padding: 20,
+                            border: progressMessage && progressMessage?.length > 0 ? '1px solid' : undefined,
+                            borderColor: 'white',
+                            maxWidth: 600,
+                            wordWrap: 'break-word'
+                        }}>
+
+                            <div>
+                                <Typography variant="h6">{progressMessage}</Typography>
+                            </div>
+
+                            <div>
+                                <Typography variant="h6">{progressSubMessage}</Typography>
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                <div style={{ width: '100%' }}>
+                                    <LinearProgress />
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                            <CircularProgress color="inherit" />
+                        )
+                    }
                 </Backdrop>
             }
 
@@ -312,6 +411,7 @@ export default function Main(props: MainProps) {
                             {drawer}
                         </Drawer>
                     }
+
                     <Typography component="span" variant="h6" className={classes.title}>
                         Gaideo
                 </Typography>
@@ -328,9 +428,24 @@ export default function Main(props: MainProps) {
                             {drawer}
                         </Drawer>
                     }
-                    <Typography variant="h6" className={classes.title} style={{ paddingLeft: userSession?.isUserSignedIn() ? 180 : 0 }}>
-                        Gaideo
-                </Typography>
+                    <div style={{ display: 'flex', flexDirection: 'row', paddingLeft: userSession?.isUserSignedIn() ? 180 : 0 }}>
+                        <div>
+                            <Icon>
+                                {isVideos ? <MovieIcon />
+                                    : isImages ? <CameraEnhanceOutlinedIcon />
+                                        : isPublish ? <PublishIcon />
+                                            : isEncrypt ? <EncryptIcon />
+                                                : isContactUs ? <ContactIcon />
+                                                    : isCommunity ? <PeopleIcon />
+                                                        : <div></div>}
+                            </Icon>
+                        </div>
+                        <div style={{ marginBottom: 0, marginTop: -2, paddingLeft: 5 }}>
+                            <Typography variant="h6" className={classes.title}>
+                                Gaideo
+                          </Typography>
+                        </div>
+                    </div>
                 </Hidden>
                 {
                     userSession?.isUserSignedIn() ?
@@ -365,6 +480,8 @@ export default function Main(props: MainProps) {
                                 >
                                     <MenuItem onClick={() => { handleMenu("profile") }}>Profile</MenuItem>
                                     <MenuItem onClick={() => { handleMenu("friends") }}>Friends</MenuItem>
+                                    <MenuItem onClick={() => { handleMenu("resetcache") }}>Reset Cache</MenuItem>
+                                    <MenuItem onClick={() => { handleMenu("deleteall") }}>Delete All Data</MenuItem>
                                     <MenuItem onClick={() => { handleMenu("logout") }}>Logout</MenuItem>
                                 </Menu>
                             </div>
@@ -386,122 +503,134 @@ export default function Main(props: MainProps) {
     )
 
     return (
-        <div style={{ backgroundImage: userSession?.isUserSignedIn() ? 'none' : 'url(/welcome.jpg)' }}>
-            {isMobile ? (
-                <HideOnScroll>
-                    {appBar}
-                </HideOnScroll>
-            ) : appBar}
-            <div className={classes.content} style={{ marginLeft: welcomeRoute ? 0 : undefined }}>
+        <Fragment>
+            <ConfirmDialog open={confirmResetCacheOpen} item={null} onResult={resetCacheConfirmResult} title="Confirm Reset Cache" message={`Are you sure you want to reset your cached indexes?`} />
+            <ConfirmDialog open={confirmDeleteAllOpen} item={null} onResult={deleteAllConfirmResult} title="Confirm Delete All" message={`Are you sure you want to delete all of your Gaideo data?`} />
+            <div style={{ backgroundImage: userSession?.isUserSignedIn() ? 'none' : 'url(/welcome.jpg)' }}>
+                {isMobile ? (
+                    <HideOnScroll>
+                        {appBar}
+                    </HideOnScroll>
+                ) : appBar}
+                <ProfileDialog open={profileOpen} setProfileDialogOpenCallback={setProfileDialogOpenCallback} />
+                <div className={classes.content} style={{ marginLeft: welcomeRoute ? 0 : undefined }}>
 
-                <div style={{ paddingTop: browseImagesRoute && slideShowIndex != null ? 0 : 18, paddingLeft: 0, paddingRight: 0 }}>
-                    <Friends show={showFriends} showCallback={showFriendsCallback} isMobile={isMobile} />
+                    <div style={{ paddingTop: browseImagesRoute && slideShowIndex != null ? 0 : 18, paddingLeft: 0, paddingRight: 0 }}>
+                        <Friends show={showFriends} showCallback={showFriendsCallback} isMobile={isMobile} />
 
-                    <Switch>
-                        <Route path="/videos/show/:id">
-                            {userSession?.isUserSignedIn() ? (
-                                <VideoPlayer />
-                            ) : (
-                                    <Welcome />
-                                )
-                            }
-                        </Route>
-                        <Route path="/videos/browse">
-                            {userSession?.isUserSignedIn() ? (
-                                <div style={{ paddingTop: 10 }}>
-                                    <BrowseVideos videos={videos} videosLoadedCallback={videosLoadedCallback} db={props.db} />
-                                </div>
-                            ) : (
-                                    <Welcome />
-                                )
-                            }
-                        </Route>
-                        <Route path="/images/browse">
-                            {userSession?.isUserSignedIn() ? (
-                                <BrowseImages
-                                    photos={photos}
-                                    imagesLoadedCallback={imagesLoadedCallback}
-                                    toggleCloseCallback={toggleCloseCallback}
-                                    slideShowIndex={slideShowIndex}
-                                    setSlideShowIndexCallback={setSlideShowIndexCallback}
-                                    db={props.db} />
-                            ) : (
-                                    <Welcome />
-                                )
-                            }
-                        </Route>
-                        <Route path="/publish/:id">
-                            {userSession?.isUserSignedIn() ? (
-                                <PublishVideo
-                                    worker={props.worker}
-                                    videos={videos}
-                                    videosLoadedCallback={videosLoadedCallback}
-                                    photos={photos}
-                                    imagesLoadedCallback={imagesLoadedCallback} 
-                                    isMobile={isMobile}/>
-                            ) : (
-                                    <Welcome />
-                                )
-                            }
-                        </Route>
-                        <Route path="/publish">
-                            {userSession?.isUserSignedIn() ? (
-                                <PublishVideo
-                                    worker={props.worker}
-                                    videos={videos}
-                                    videosLoadedCallback={videosLoadedCallback}
-                                    photos={photos}
-                                    imagesLoadedCallback={imagesLoadedCallback} 
-                                    isMobile={isMobile}/>
-                            ) : (
-                                    <Welcome />
-                                )
-                            }
-                        </Route>
-                        <Route path="/community">
-                            {userSession?.isUserSignedIn() ? (
-                                <div style={{ paddingTop: 25, paddingLeft: !isMobile ? 22 : 0 }}>
-                                    <Community />
-                                </div>
-                            ) : (
-                                    <Welcome />
-                                )
-                            }
-                        </Route>
-                        <Route path="/encrypt">
-                            {userSession?.isUserSignedIn() ? (
-                                <div style={{ paddingTop: 50, paddingLeft: !isMobile ? 22 : 0 }}>
-                                    <VideoEncryption />
-                                </div>
-                            ) : (
-                                    <Welcome />
-                                )
-                            }
-                        </Route>
-                        <Route path="/contactus">
-                            {userSession?.isUserSignedIn() ? (
-                                <div style={{ paddingTop: 50, paddingLeft: !isMobile ? 22 : 0 }}>
-                                    <ContactUs />
-                                </div>
-                            ) : (
-                                    <Welcome />
-                                )
-                            }
-                        </Route>
-                        <Route path="/">
-                            {userSession?.isUserSignedIn() ? (
-                                <Redirect to="/videos/browse" />
-                            ) : (
-                                    <Welcome />
-                                )
-                            }
-                        </Route>
-                        <Route path="/welcome">
-                            <Welcome />
-                        </Route>
-                    </Switch>
+                        <Switch>
+                            <Route path="/videos/show/:id">
+                                {userSession?.isUserSignedIn() ? (
+                                    <VideoPlayer isMobile={isMobile} />
+                                ) : (
+                                        <Welcome />
+                                    )
+                                }
+                            </Route>
+                            <Route path="/videos/browse">
+                                {userSession?.isUserSignedIn() ? (
+                                    <div style={{ paddingTop: 10 }}>
+                                        <BrowseVideos
+                                            videos={videos}
+                                            videosLoadedCallback={videosLoadedCallback}
+                                            db={props.db}
+                                            worker={props.worker} />
+                                    </div>
+                                ) : (
+                                        <Welcome />
+                                    )
+                                }
+                            </Route>
+                            <Route path="/images/browse">
+                                {userSession?.isUserSignedIn() ? (
+                                    <BrowseImages
+                                        photos={photos}
+                                        imagesLoadedCallback={imagesLoadedCallback}
+                                        toggleCloseCallback={toggleCloseCallback}
+                                        slideShowIndex={slideShowIndex}
+                                        setSlideShowIndexCallback={setSlideShowIndexCallback}
+                                        db={props.db}
+                                        worker={props.worker} />
+                                ) : (
+                                        <Welcome />
+                                    )
+                                }
+                            </Route>
+                            <Route path="/publish/:id">
+                                {userSession?.isUserSignedIn() ? (
+                                    <PublishVideo
+                                        worker={props.worker}
+                                        videos={videos}
+                                        videosLoadedCallback={videosLoadedCallback}
+                                        photos={photos}
+                                        imagesLoadedCallback={imagesLoadedCallback}
+                                        isMobile={isMobile}
+                                        updateProgressCallback={updateProgressCallback} />
+                                ) : (
+                                        <Welcome />
+                                    )
+                                }
+                            </Route>
+                            <Route path="/publish">
+                                {userSession?.isUserSignedIn() ? (
+                                    <PublishVideo
+                                        worker={props.worker}
+                                        videos={videos}
+                                        videosLoadedCallback={videosLoadedCallback}
+                                        photos={photos}
+                                        imagesLoadedCallback={imagesLoadedCallback}
+                                        isMobile={isMobile}
+                                        updateProgressCallback={updateProgressCallback} />
+                                ) : (
+                                        <Welcome />
+                                    )
+                                }
+                            </Route>
+                            <Route path="/community">
+                                {userSession?.isUserSignedIn() ? (
+                                    <div style={{ paddingTop: 25, paddingLeft: !isMobile ? 22 : 0 }}>
+                                        <Community />
+                                    </div>
+                                ) : (
+                                        <Welcome />
+                                    )
+                                }
+                            </Route>
+                            <Route path="/encrypt">
+                                {userSession?.isUserSignedIn() ? (
+                                    <div style={{ paddingTop: 50, paddingLeft: !isMobile ? 22 : 0 }}>
+                                        <VideoEncryption />
+                                    </div>
+                                ) : (
+                                        <Welcome />
+                                    )
+                                }
+                            </Route>
+                            <Route path="/contactus">
+                                {userSession?.isUserSignedIn() ? (
+                                    <div style={{ paddingTop: 50, paddingLeft: !isMobile ? 22 : 0 }}>
+                                        <ContactUs />
+                                    </div>
+                                ) : (
+                                        <Welcome />
+                                    )
+                                }
+                            </Route>
+                            <Route path="/">
+                                {userSession?.isUserSignedIn() ? (
+                                    <Redirect to="/videos/browse" />
+                                ) : (
+                                        <Welcome />
+                                    )
+                                }
+                            </Route>
+                            <Route path="/welcome">
+                                <Welcome />
+                            </Route>
+                        </Switch>
+                    </div>
                 </div>
             </div>
-        </div>
+        </Fragment>
     );
 }

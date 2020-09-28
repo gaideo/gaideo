@@ -12,6 +12,7 @@ import MenuItem from '@material-ui/core/MenuItem';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import ConfirmDialog from "../confirm-dialog/ConfirmDialog";
 import { getImageSize } from "../../utilities/image-utils";
+import { UserSession } from "blockstack";
 
 interface CheckmarkProps {
   selected: boolean
@@ -97,7 +98,8 @@ export interface SelectedImageProps {
   deleteCallback: DeletePhotoCallback,
   selectImageCallback: SelectImageCallback,
   toggleSelectionCallback: ToggleSelectionCallback
-  deleteSelectedCallback: DeleteSelectedCallback
+  deleteSelectedCallback: DeleteSelectedCallback,
+  worker: Worker | null
 }
 
 const SelectedImage = (props: SelectedImageProps) => {
@@ -111,6 +113,12 @@ const SelectedImage = (props: SelectedImageProps) => {
   const history = useHistory();
   const [isSelected, setIsSelected] = useState(props.selected);
 
+  const deleteImage = async (mediaEntry: MediaEntry, userSession: UserSession | undefined) => {
+    if (userSession) {
+      await deleteImageEntry(mediaEntry, userSession, props.worker);
+    }
+  }
+
   const deleteConfirmResult = (item: any, result: boolean) => {
     setConfirmOpen(false);
     if (result) {
@@ -120,7 +128,7 @@ const SelectedImage = (props: SelectedImageProps) => {
       else {
         let mediaEntry: MediaEntry = item as MediaEntry;
         if (mediaEntry) {
-          trackPromise(deleteImageEntry(mediaEntry, userSession).then(x => {
+          trackPromise(deleteImage(mediaEntry, userSession).then(x => {
             props.deleteCallback(props.photo);
           }))
         }
@@ -238,13 +246,13 @@ const SelectedImage = (props: SelectedImageProps) => {
         />
         <style>{`.not-selected:hover{outline:2px solid #06befa}`}</style>
       </div>
-      <Toolbar style={{ justifyContent: 'space-between' }}>
+      <Toolbar style={{paddingLeft: 5, justifyContent: 'space-between' }} disableGutters={true}>
         <div onClick={() => { navImage(props.photo.browseEntry) }}>
           <Typography variant="caption">{`${props.photo.browseEntry.mediaEntry?.title} (${props.photo.browseEntry.age})`}</Typography>
         </div>
         <div>
           <IconButton
-            style={{ minWidth: 30, outline: 'none' }}
+            style={{ minWidth: 30, outline: 'none', paddingTop: 0, paddingBottom: 0, paddingLeft: 5, paddingRight: 5 }}
             onClick={(e) => handleClick(e, props.photo.browseEntry.mediaEntry)}
           >
             <MoreVertIcon />
