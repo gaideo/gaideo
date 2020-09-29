@@ -94,7 +94,12 @@ export default function App() {
       icon: window.location.origin + '/icons/logo.svg',
     },
     userSession,
-    finished: ({ userSession: UserSession }: any) => {
+    finished: async ({ userSession: UserSession }: any) => {
+      let database = await initDatabase();
+      setDB(database);
+      let ud = userSession.loadUserData();
+      setUserDataCallback(ud);
+      setWorker(initGaiaWorker());
     },
   };
 
@@ -113,7 +118,7 @@ export default function App() {
     return () => {
     }
 
-  }, [setUserDataCallback, setWorker ]);
+  }, [setUserDataCallback, setWorker]);
 
   return (
     <ThemeProvider theme={themeConfig}>
