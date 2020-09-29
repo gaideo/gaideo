@@ -512,7 +512,7 @@ export default function Main(props: MainProps) {
                         {appBar}
                     </HideOnScroll>
                 ) : appBar}
-                <ProfileDialog open={profileOpen} setProfileDialogOpenCallback={setProfileDialogOpenCallback} />
+                <ProfileDialog userName={props.userData?.username} open={profileOpen} setProfileDialogOpenCallback={setProfileDialogOpenCallback} />
                 <div className={classes.content} style={{ marginLeft: welcomeRoute ? 0 : undefined }}>
 
                     <div style={{ paddingTop: browseImagesRoute && slideShowIndex != null ? 0 : 18, paddingLeft: 0, paddingRight: 0 }}>

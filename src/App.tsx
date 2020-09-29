@@ -91,7 +91,7 @@ export default function App() {
   const authOptions = {
     appDetails: {
       name: "Gaideo",
-      icon: window.location.origin + '/icons/logo.svg',
+      icon: window.location.origin + '/logo192.png',
     },
     userSession,
     finished: async ({ userSession: UserSession }: any) => {

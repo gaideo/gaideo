@@ -33,16 +33,16 @@ function isFFMpegWasmSystemFile(name: string) {
 async function encryptSegment(encKey: Buffer, iv: Buffer, plainData: Buffer) {
     const cipher = await createCipher();
     const cipherText = await cipher.encrypt(
-      'aes-128-cbc',
-      encKey,
-      iv,
-      plainData
+        'aes-128-cbc',
+        encKey,
+        iv,
+        plainData
     );
     return cipherText;
 }
 
 function clearFFMpegFileSystem(ffmpeg: any) {
-  
+
     if (ffmpeg) {
         const files = ffmpeg.ls("/");
         if (files && files.length > 0) {
@@ -278,8 +278,8 @@ const computePreviewFileName = (videoFileName: string) => {
 }
 
 export async function encryptVideo(
-    inputMediaEntry: MediaEntry, 
-    file: any, 
+    inputMediaEntry: MediaEntry,
+    file: any,
     isMobile: boolean,
     updateProgress: UpdateProgressCallback): Promise<FFMpegEncryptResult> {
     let mediaEntry: MediaEntry = { ...inputMediaEntry, previewImageName: undefined };
@@ -298,7 +298,7 @@ export async function encryptVideo(
         if (gettingDimensions) {
             let dimResult = dimensionRegex.exec(e.message);
             if (dimResult?.length === 2) {
-                let xIdx = dimResult[1].indexOf('x');                
+                let xIdx = dimResult[1].indexOf('x');
                 dimWidth = parseInt(dimResult[1].substring(0, xIdx));
                 dimHeight = parseInt(dimResult[1].substring(xIdx + 1));
                 if (isRotated) {
@@ -328,7 +328,7 @@ export async function encryptVideo(
 
     let ffmpeg: any;
     if (!isMobile && canRunWebAssembly()) {
-        
+
         ffmpeg = createFFmpeg({
             corePath: "/scripts/workers/ffmpeg-core.js",
             log: true,
@@ -358,20 +358,22 @@ export async function encryptVideo(
         if (!result.error) {
             if (dimHeight > 0 && dimWidth > 0) {
                 if (dimHeight > 720 || dimWidth > 1280) {
-                    let size = getImageSize(dimWidth, dimHeight, 1280, 720);
+                    let maxHeight = 720;
+                    let size = getImageSize(dimWidth, dimHeight, 1280, maxHeight);
                     let w = Math.round(size[0]);
                     let h = Math.round(size[1]);
-                    if ((w % 2) === 1) {
-                        w--;
-                    }
-                    if ((h % 2) === 1) {
-                        h--;
+
+                    while (maxHeight > 0 && ((w % 2) === 1 || (h % 2) === 1)) {
+                        maxHeight -= 2;
+                        size = getImageSize(dimWidth, dimHeight, 1280, maxHeight);
+                        w = Math.round(size[0]);
+                        h = Math.round(size[1]);
                     }
                     dimensions = {
-                        width: Math.round(w),
-                        height: Math.round(h)
+                        width: w,
+                        height: h
                     }
-    
+
                 }
                 else {
                     dimensions = {
@@ -418,7 +420,7 @@ export async function encryptVideo(
                     ffmpeg: ffmpeg
                 }, handleLogMessage);
                 encrypting = false;
-            if (!result.error) {
+                if (!result.error) {
                     memfs = result.result?.MEMFS;
                     if (memfs?.length > 0) {
                         for (let i = 0; i < memfs.length; i++) {
