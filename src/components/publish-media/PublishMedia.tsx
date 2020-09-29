@@ -544,7 +544,7 @@ export default function PublishVideo(props: PublishVideoProps) {
             setUploading(true);
             try {
                 if (mediaEntry.mediaType === MediaType.UnencryptedVideo) {
-                    let encryptResult = await encryptVideo(mediaEntry, files[0], props.updateProgressCallback);
+                    let encryptResult = await encryptVideo(mediaEntry, files[0], props.isMobile, props.updateProgressCallback);
                     if (encryptResult.mediaEntry && encryptResult.hlsFiles) {
                         await saveVideoFiles(userSession, encryptResult.mediaEntry, encryptResult.hlsFiles);
                     }

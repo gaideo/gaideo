@@ -29,6 +29,7 @@ interface BrowseImagesProps {
     slideShowIndex: number | null;
     setSlideShowIndexCallback: SetSlideShowIndexCallback;
     worker: Worker | null;
+    isMobile: boolean
 }
 
 export function BrowseImages(props: BrowseImagesProps) {
@@ -247,7 +248,7 @@ export function BrowseImages(props: BrowseImagesProps) {
                     closeSlideShowCallback={closeSlideShowCallback}
                 />
             ) : (
-                    <div style={{paddingLeft: 22}}>
+                    <div style={{paddingLeft: !props.isMobile ? 22 : 0}}>
                         <Gallery photos={props.photos} direction={"row"}  renderImage={imageRenderer} />
                         {props.photos.length >= MAX_MORE &&
                             <div style={{ display: 'flex', justifyContent: 'center' }}>

@@ -277,7 +277,11 @@ const computePreviewFileName = (videoFileName: string) => {
     return `${computeNameFromImageFile(videoFileName)}_preview.jpg`;
 }
 
-export async function encryptVideo(inputMediaEntry: MediaEntry, file: any, updateProgress: UpdateProgressCallback): Promise<FFMpegEncryptResult> {
+export async function encryptVideo(
+    inputMediaEntry: MediaEntry, 
+    file: any, 
+    isMobile: boolean,
+    updateProgress: UpdateProgressCallback): Promise<FFMpegEncryptResult> {
     let mediaEntry: MediaEntry = { ...inputMediaEntry, previewImageName: undefined };
     let hlsFiles: FFMpegFile[] = [];
 
@@ -323,7 +327,7 @@ export async function encryptVideo(inputMediaEntry: MediaEntry, file: any, updat
     }
 
     let ffmpeg: any;
-    if (canRunWebAssembly()) {
+    if (!isMobile && canRunWebAssembly()) {
         
         ffmpeg = createFFmpeg({
             corePath: "/scripts/workers/ffmpeg-core.js",
@@ -353,11 +357,19 @@ export async function encryptVideo(inputMediaEntry: MediaEntry, file: any, updat
         gettingDimensions = false;
         if (!result.error) {
             if (dimHeight > 0 && dimWidth > 0) {
-                if (dimHeight > 1080 || dimWidth > 1920) {
-                    let size = getImageSize(dimWidth, dimHeight, 1920, 1080);
+                if (dimHeight > 720 || dimWidth > 1280) {
+                    let size = getImageSize(dimWidth, dimHeight, 1280, 720);
+                    let w = Math.round(size[0]);
+                    let h = Math.round(size[1]);
+                    if ((w % 2) === 1) {
+                        w--;
+                    }
+                    if ((h % 2) === 1) {
+                        h--;
+                    }
                     dimensions = {
-                        width: Math.round(size[0]),
-                        height: Math.round(size[1])
+                        width: Math.round(w),
+                        height: Math.round(h)
                     }
     
                 }

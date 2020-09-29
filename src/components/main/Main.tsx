@@ -550,7 +550,8 @@ export default function Main(props: MainProps) {
                                         slideShowIndex={slideShowIndex}
                                         setSlideShowIndexCallback={setSlideShowIndexCallback}
                                         db={props.db}
-                                        worker={props.worker} />
+                                        worker={props.worker} 
+                                        isMobile={isMobile}/>
                                 ) : (
                                         <Welcome />
                                     )
