@@ -6,14 +6,16 @@ import "./BrowseVideos.css";
 import MenuItem from '@material-ui/core/MenuItem';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import { useHistory } from 'react-router-dom';
-import { loadBrowseEntryFromCache, deleteVideoEntry, getCacheEntries } from '../../utilities/data-utils';
+import { loadBrowseEntryFromCache, deleteVideoEntry, getCacheEntries, getFriends } from '../../utilities/data-utils';
 import ConfirmDialog from '../confirm-dialog/ConfirmDialog';
+import ShareUserDialog from '../share-user-dialog/ShareUserDialog';
 import { MediaEntry, MediaType } from '../../models/media-entry';
 import { trackPromise } from 'react-promise-tracker';
 import { IDBPDatabase } from 'idb';
 import { VideosLoadedCallback } from '../../models/callbacks';
 import { UserSession } from 'blockstack';
 import { getImageSize } from '../../utilities/image-utils';
+import { ShareUserEntry } from '../../models/share-user-entry';
 
 const options = [
     'Share',
@@ -35,6 +37,8 @@ export function BrowseVideos(props: BrowseVideosProps) {
     const { userSession } = authOptions;
     const history = useHistory();
     const [confirmOpen, setConfirmOpen] = React.useState(false);
+    const [shareUserOpen, setShareUserOpen] = React.useState(false);
+    const [shareUsers, setShareUsers] = React.useState<Array<string>>([]);
     const [menuMediaEntry, setMenuMediaEntry] = React.useState<MediaEntry | null>(null);
     const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
     const open = Boolean(anchorEl);
@@ -139,6 +143,12 @@ export function BrowseVideos(props: BrowseVideosProps) {
         }
     }
 
+    const shareUserResult = (result: ShareUserEntry[] | undefined) => {
+        setShareUserOpen(false);
+        if (result && result.length > 0) {
+        }
+    }
+
     const navVideo = (browseEntry: BrowseEntry) => {
         history.push(`/videos/show/${browseEntry.mediaEntry.id}?height=${browseEntry.actualHeight}&width=${browseEntry.actualWidth}`)
     }
@@ -152,7 +162,7 @@ export function BrowseVideos(props: BrowseVideosProps) {
         setAnchorEl(null);
     }
 
-    const handleMenu = (option: string) => {
+    const handleMenu = async (option: string) => {
         if (option === 'Delete') {
             if (menuMediaEntry) {
                 setConfirmOpen(true);
@@ -164,13 +174,22 @@ export function BrowseVideos(props: BrowseVideosProps) {
             }
         }
         else if (option === 'Share') {
-
+            let friends = await getFriends(userSession);
+            if (friends) {
+                const users: string[] = []
+                for (let key in friends) {
+                    users.push(key);
+                }
+                setShareUsers(users);
+                setShareUserOpen(true);
+            }
         }
         handleClose();
     };
 
     return (
         <Fragment>
+            <ShareUserDialog open={shareUserOpen} initialUsers={shareUsers} shareUsersResult={shareUserResult}/>
             <ConfirmDialog open={confirmOpen} item={menuMediaEntry} onResult={deleteConfirmResult} title="Confirm Delete" message={`Are you sure you want to delete ${menuMediaEntry?.title}?`} />
             <Toolbar style={{ flexWrap: 'wrap', justifyContent: 'space-around' }}>
                 {props.videos.map(x => (

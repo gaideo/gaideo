@@ -38,8 +38,8 @@ export async function deleteVideoEntry(mediaEntry: MediaEntry, userSession: any,
             try {
                 await userSession?.deleteFile(`videos/${mediaEntry.id}/private.key`)
             }
-            catch {}
-            
+            catch { }
+
             let indexUrl: string = `videos/${mediaEntry.id}.index`;
             await userSession?.deleteFile(indexUrl, {
                 wasSigned: false
@@ -78,19 +78,9 @@ export function createHashAddress(values: string[]) {
 
 }
 
-export async function getUserDirectory(userName: string, publicKey: string | null = null) {
-    let pk;
-    if (publicKey) {
-        pk = publicKey;
-    }
-    else {
-        pk = await getPublicKey(userName);
-    }
-    if (pk) {
-        let addr = getAddressFromPublicKey(pk);
-        return `share/${addr}/`;
-    }
-    return null;
+export function getUserDirectory(publicKey: string) {
+    let addr = getAddressFromPublicKey(publicKey);
+    return `share/${addr}/`;
 }
 
 const getMasterIndex = async (userSession: UserSession, fileName: string, canCreate: boolean) => {
@@ -112,6 +102,15 @@ const getMasterIndex = async (userSession: UserSession, fileName: string, canCre
     return ret;
 }
 
+export function getRootDirectory(publicKey: string, userData: UserData) {
+    let ret = '';
+    let currentPublicKey = getPublicKeyFromPrivate(userData.appPrivateKey);
+    if (currentPublicKey !== publicKey) {
+        ret = getUserDirectory(publicKey);
+    }
+    return ret;
+}
+
 export async function updateMasterIndex(
     userSession: UserSession,
     mediaFileEntries: MediaFileEntry[],
@@ -121,16 +120,15 @@ export async function updateMasterIndex(
         if (mediaFileEntries?.length > 0) {
             let fileName = null;
             let publicFileName = null;
-            let publicKey = null;
+            let userData = userSession.loadUserData();
+            let publicKey = getPublicKeyFromPrivate(userData.appPrivateKey);
             if (userName && userName.length > 0) {
                 publicKey = await getPublicKey(userName);
-                if (publicKey) {
-                    let userDir = await getUserDirectory(userName, publicKey);
-                    if (userDir) {
-                        publicFileName = `${userDir}master-index`;
-                        fileName = `${userDir}internal-index`;
-                    }
-                }
+            }
+            let userDir = await getRootDirectory(publicKey, userData);
+            if (userDir && userDir.length > 0) {
+                publicFileName = `${userDir}master-index`;
+                fileName = `${userDir}internal-index`;
             }
             else {
                 fileName = "master-index";
@@ -183,7 +181,7 @@ export async function deleteImageEntry(mediaEntry: MediaEntry, userSession: any,
                     wasSigned: false
                 });
             }
-            catch {}
+            catch { }
         }
 
         let indexUrl: string = `images/${mediaEntry.id}.index`;
@@ -194,8 +192,8 @@ export async function deleteImageEntry(mediaEntry: MediaEntry, userSession: any,
         worker?.postMessage({
             message: "removecache",
             indexFile: indexUrl
-          })
-        }
+        })
+    }
 
 }
 
@@ -249,22 +247,22 @@ export async function getPrivateKeyFileName(
     id: string,
     mediaType: MediaType,
     userName: string | undefined = undefined) {
-    let root: string;
-    let userDir = '';
+    let publicKey = getPublicKeyFromPrivate(userData.appPrivateKey);
     if (userName) {
-        let publicKey = getPublicKeyFromPrivate(userData.appPrivateKey);
-        userDir = await getUserDirectory(userName, publicKey) as string;
-        if (!userDir) {
-            Promise.reject(`Unable to locate user: ${userName}`);
+        publicKey = await getPublicKey(userName);
+        if (!publicKey) {
+            throw new Error(`Unable to locate user: ${userName}.`);
         }
     }
+    let root = getRootDirectory(publicKey, userData);
+    let mediaDir;
     if (mediaType === MediaType.Images) {
-        root = 'images/'
+        mediaDir = 'images/'
     }
     else {
-        root = 'videos/'
+        mediaDir = 'videos/'
     }
-    let fileName = `${userDir}${root}${id}/private.key`;
+    let fileName = `${root}${mediaDir}${id}/private.key`;
     return fileName;
 }
 
