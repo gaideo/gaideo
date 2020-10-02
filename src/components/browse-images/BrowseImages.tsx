@@ -3,7 +3,7 @@ import { useConnect } from '@blockstack/connect';
 import { Box, Button } from '@material-ui/core';
 import { BrowseEntry } from '../../models/browse-entry';
 import { useHistory } from 'react-router-dom';
-import { deleteImageEntry, getCacheEntries, loadBrowseEntryFromCache } from '../../utilities/data-utils';
+import { deleteImageEntry, getCacheEntries, getSelectedFriends, loadBrowseEntryFromCache, shareMedia } from '../../utilities/data-utils';
 import Gallery from 'react-photo-gallery';
 import SelectedImage from './SelectedImage';
 import { Photo } from '../../models/photo';
@@ -11,7 +11,8 @@ import { MediaEntry, MediaType } from '../../models/media-entry';
 import { SlideShow } from './SlideShow';
 import { trackPromise } from 'react-promise-tracker';
 import { IDBPDatabase } from 'idb';
-import { ImagesLoadedCallback } from '../../models/callbacks';
+import { ImagesLoadedCallback, UpdateProgressCallback } from '../../models/callbacks';
+import { ShareUserEntry } from '../../models/share-user-entry';
 
 interface ToggleCloseCallback {
     (): void
@@ -29,7 +30,8 @@ interface BrowseImagesProps {
     slideShowIndex: number | null;
     setSlideShowIndexCallback: SetSlideShowIndexCallback;
     worker: Worker | null;
-    isMobile: boolean
+    isMobile: boolean;
+    updateProgressCallback: UpdateProgressCallback;
 }
 
 export function BrowseImages(props: BrowseImagesProps) {
@@ -38,6 +40,7 @@ export function BrowseImages(props: BrowseImagesProps) {
     const [isSelectable, setIsSelectable] = React.useState(false);
     const [loadingMore, setLoadingMore] = React.useState(false);
     const [lastCacheKeys, setLastCacheKeys] = React.useState<IDBValidKey[] | null>(null);
+    const [selectedFriends, setSelectedFriends] = React.useState<Array<string> | null>(null);
     const history = useHistory();
     const MAX_MORE = 12;
 
@@ -65,15 +68,19 @@ export function BrowseImages(props: BrowseImagesProps) {
     }
 
     const loadPhotoCallback = useCallback(loadPhoto, []);
-
+    const db = props.db;
+    const imagesLoadedCallback = props.imagesLoadedCallback;
+    const photos = props.photos;
 
     useEffect(() => {
 
 
         const refresh = async () => {
             let arr: Photo[] = [];
-            if (userSession && props.db) {
-                let cacheResults = await getCacheEntries(userSession, props.db, MediaType.Images, MAX_MORE, null);
+            if (db && userSession?.isUserSignedIn()) {
+                let sf = await getSelectedFriends(userSession);
+                setSelectedFriends(sf);
+                let cacheResults = await getCacheEntries(userSession, db, MediaType.Images, MAX_MORE, null, sf);
                 if (cacheResults.cacheEntries?.length > 0) {
                     for (let i = 0; i < cacheResults.cacheEntries?.length; i++) {
 
@@ -87,7 +94,7 @@ export function BrowseImages(props: BrowseImagesProps) {
                                 img.onload = ev => {
                                     let photo = loadPhotoCallback(be, img, src);
                                     arr.push(photo)
-                                    props.imagesLoadedCallback(arr.slice())
+                                    imagesLoadedCallback(arr.slice())
                                 };
                                 img.src = src;
                             }
@@ -99,10 +106,10 @@ export function BrowseImages(props: BrowseImagesProps) {
                 }
             }
         }
-        if (props.photos.length === 0) {
+        if (photos.length === 0) {
             refresh();
         }
-    }, [userSession, history, props, loadPhotoCallback]);
+    }, [userSession, photos, db, imagesLoadedCallback, loadPhotoCallback]);
 
     const loadMore = async () => {
         if (userSession && props.db && lastCacheKeys && lastCacheKeys?.length > 0) {
@@ -110,7 +117,7 @@ export function BrowseImages(props: BrowseImagesProps) {
             try {
                 setLoadingMore(true)
                 let arr: Photo[] = props.photos;
-                let cacheResults = await getCacheEntries(userSession, props.db, MediaType.Images, MAX_MORE, lastCacheKeys);
+                let cacheResults = await getCacheEntries(userSession, props.db, MediaType.Images, MAX_MORE, lastCacheKeys, selectedFriends);
                 if (cacheResults.cacheEntries?.length > 0) {
                     for (let i = 0; i < cacheResults.cacheEntries?.length; i++) {
                         let decryptedData = await userSession.decryptContent(cacheResults.cacheEntries[i].data) as string;
@@ -193,8 +200,10 @@ export function BrowseImages(props: BrowseImagesProps) {
 
     const deleteSelectedCallback = useCallback(() => {
         const removeSelectedImages = async (arr: MediaEntry[]) => {
-            for (let j = 0; j < arr.length; j++) {
-                await deleteImageEntry(arr[j], userSession, props.worker);
+            if (userSession) {
+                for (let j = 0; j < arr.length; j++) {
+                    await deleteImageEntry(arr[j], userSession, props.worker, props.updateProgressCallback);
+                }
             }
             history.go(0);
         }
@@ -207,7 +216,21 @@ export function BrowseImages(props: BrowseImagesProps) {
         if (removeArray.length > 0) {
             trackPromise(removeSelectedImages(removeArray));
         }
-    }, [history, props.photos, userSession, props.worker]);
+    }, [history, props.photos, userSession, props.worker, props.updateProgressCallback]);
+
+    const shareSelectedCallback = useCallback((shareUsers: ShareUserEntry[]) => {
+        if (userSession?.isUserSignedIn()) {
+            const shareArray: MediaEntry[] = [];
+            for (let i = 0; i < props.photos.length; i++) {
+                if (props.photos[i].selected) {
+                    shareArray.push(props.photos[i].browseEntry.mediaEntry);
+                }
+            }
+            if (shareArray.length > 0) {
+                trackPromise(shareMedia(shareArray, userSession, shareUsers));
+            }
+        }
+    }, [props.photos, userSession]);
 
     const closeSlideShowCallback = useCallback(() => {
         props.setSlideShowIndexCallback(null);
@@ -231,25 +254,29 @@ export function BrowseImages(props: BrowseImagesProps) {
                     selectImageCallback={selectImageCallback}
                     toggleSelectionCallback={toggleSelectionCallback}
                     deleteSelectedCallback={deleteSelectedCallback}
+                    shareSelectedCallback={shareSelectedCallback}
                     worker={props.worker}
+                    updateProgressCallback={props.updateProgressCallback}
                 />
             </Box>
         ),
-        [deletePhotoCallback, selectImageCallback, toggleSelectionCallback, isSelectable, deleteSelectedCallback, props.photos.length, props.worker]
+        [deletePhotoCallback, selectImageCallback, toggleSelectionCallback,
+            isSelectable, deleteSelectedCallback, props.photos.length,
+            props.worker, props.updateProgressCallback, shareSelectedCallback]
 
     );
 
     return (
         <Fragment>
             { props.slideShowIndex != null ? (
-                    <SlideShow
+                <SlideShow
                     images={props.photos}
                     current={props.slideShowIndex}
                     closeSlideShowCallback={closeSlideShowCallback}
                 />
             ) : (
-                    <div style={{paddingLeft: !props.isMobile ? 22 : 0}}>
-                        <Gallery photos={props.photos} direction={"row"}  renderImage={imageRenderer} />
+                    <div style={{ paddingLeft: !props.isMobile ? 22 : 0 }}>
+                        <Gallery photos={props.photos} direction={"row"} renderImage={imageRenderer} />
                         {props.photos.length >= MAX_MORE &&
                             <div style={{ display: 'flex', justifyContent: 'center' }}>
                                 <Button disabled={loadingMore} onClick={loadMore}>Show More</Button>

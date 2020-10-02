@@ -5,6 +5,7 @@ export interface CacheEntry {
     data: string;
     section: string;
     lastUpdated: Date;
+    shareName?: string;
 }
 
 export interface CacheResults {

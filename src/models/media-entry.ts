@@ -14,6 +14,6 @@ export interface MediaEntry {
     keywords?: string[] | null;
     createdDateUTC: Date;
     lastUpdatedUTC: Date;
-    mediaType?: MediaType;
+    mediaType: MediaType;
     previewImageName?: string;
 }

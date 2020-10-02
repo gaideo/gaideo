@@ -56,11 +56,21 @@ const getMasterIndex = async (root, userName) => {
             fileName = `${root}${fileName}`;
         }
         let json;
-        json = await userSession.getFile(fileName, {
-            decrypt: true,
-            verify: true,
-            username: userName
-        });
+        if (userName) {
+            const encryptedJson = await userSession.getFile(fileName, {
+                decrypt: false,
+                verify: false,
+                username: userName
+            });
+            json = await userSession.decryptContent(encryptedJson);
+        }
+        else {
+            json = await userSession.getFile(fileName, {
+                decrypt: true,
+                verify: true,
+                username: userName
+            });
+        }
         if (json) {
             masterIndex = JSON.parse(json);
         }
@@ -77,9 +87,77 @@ const createIndexID = async (publicKey, index) => {
     return id;
 }
 
+const getPublicKey = async (userName) => {
+    let publicKey;
+    if (userName) {
+        let profile = await blockstack.lookupProfile(userName);
+        if (profile) {
+            let appMeta = profile.appsMeta[location.origin];
+            if (appMeta) {
+                return appMeta.publicKey;
+            }
+        }
+    }
+    else {
+        publicKey = blockstack.getPublicKeyFromPrivate(sessionData.userData.appPrivateKey);
+        return publicKey
+    }
+    throw new Error(`Unable to locate user: ${userName}.`);
+}
+
 const getUserDirectory = (publicKey) => {
-    let addr = blockstack.getAddressFromPublicKey(publicKey);
+    let addr = blockstack.publicKeyToAddress(publicKey);
     return `share/${addr}/`;
+}
+
+const getPrivateKeyFileName = (
+    publicKey,
+    id,
+    mediaType,
+    userName) => {
+    let root = '';
+    if (userName) {
+        root = getUserDirectory(publicKey);
+    }
+    let mediaDir;
+    if (mediaType === 1) {
+        mediaDir = 'images/'
+    }
+    else {
+        mediaDir = 'videos/'
+    }
+    let fileName = `${root}${mediaDir}${id}/private.key`;
+    return fileName;
+}
+
+const getPrivateKey = async (
+    userSession,
+    id,
+    mediaType,
+    userName) => {
+    let publicKey = blockstack.getPublicKeyFromPrivate(sessionData.userData.appPrivateKey);
+    let privateKeyFile = getPrivateKeyFileName(publicKey, id, mediaType, userName);
+    let privateKey;
+    try {
+        if (userName) {
+            const encryptedJson = await userSession.getFile(privateKeyFile, {
+                decrypt: false,
+                verify: false,
+                username: userName
+            });
+            privateKey = await userSession.decryptContent(encryptedJson);
+        }
+        else {
+            privateKey = await userSession.getFile(privateKeyFile, {
+                decrypt: true,
+                verify: true
+            });
+        }
+    }
+    catch {
+
+    }
+    return privateKey;
 }
 
 const removeCachedIndex = async (indexFile, pk) => {
@@ -99,30 +177,52 @@ const removeCachedIndex = async (indexFile, pk) => {
     return false;
 }
 
+const getMediaIDFromIndexFileName = (fileName) => {
+    let i = fileName?.lastIndexOf('/');
+    if (i >= 0) {
+        return fileName.substring(i + 1).replace('.index', '');
+    }
+    return null;
+}
+
+const getMediaTypeFromIndexFileName = (fileName) => {
+    let ret = 0;
+    if (fileName.startsWith('images/')) {
+        ret = 1;
+    }
+    return ret;
+}
+
 const updateCachedIndex = async (indexFile, pk) => {
-    let publicKey = null;
+    let ownerPublicKey = null;
     if (pk) {
-        publicKey = pk;
+        ownerPublicKey = pk;
     }
     else if (sessionData?.userData?.appPrivateKey) {
-        publicKey = blockstack.getPublicKeyFromPrivate(sessionData.userData.appPrivateKey);
+        ownerPublicKey = blockstack.getPublicKeyFromPrivate(sessionData.userData.appPrivateKey);
     }
-    if (publicKey) {
-        let id = await createIndexID(publicKey, indexFile);
-        let json = await userSession.getFile(indexFile, {
-            decrypt: true,
-            verify: true
-        });
-        let mediaEntry = JSON.parse(json);
-        let encryptedJson = await userSession.encryptContent(json);
-        let cachedIndex = {
-            data: encryptedJson,
-            id: id,
-            section: `${publicKey}_${mediaEntry.mediaType}`,
-            lastUpdated: mediaEntry.lastUpdatedUTC
+    if (ownerPublicKey) {
+        let indexID = await createIndexID(ownerPublicKey, indexFile);
+        let id = getMediaIDFromIndexFileName(indexFile);
+        let mediaType = getMediaTypeFromIndexFileName(indexFile);
+        if (id) {
+            let privateKey = await getPrivateKey(userSession, ownerPublicKey, id, mediaType);
+            if (privateKey) {
+                let json = await userSession.getFile(indexFile, {
+                    decrypt: privateKey
+                });
+                let mediaEntry = JSON.parse(json);
+                let encryptedJson = await userSession.encryptContent(json);
+                let cachedIndex = {
+                    data: encryptedJson,
+                    id: indexID,
+                    section: `${ownerPublicKey}_${mediaEntry.mediaType}`,
+                    lastUpdated: mediaEntry.lastUpdatedUTC
+                }
+                await db.put('cached-indexes', cachedIndex);
+                return true;
+            }
         }
-        await db.put('cached-indexes', cachedIndex);
-        return true;
     }
     return false;
 }
@@ -143,10 +243,10 @@ const saveGaiaIndexesToCache = async (userName) => {
     let ret = 0;
     let hasExisting = false;
     try {
-        let publicKey = blockstack.getPublicKeyFromPrivate(sessionData.userData.appPrivateKey);;
+        let ownerPublicKey = blockstack.getPublicKeyFromPrivate(sessionData.userData.appPrivateKey);;
         let root = '';
         if (userName) {
-            root = getUserDirectory(publicKey);
+            root = getUserDirectory(ownerPublicKey);
         }
         let masterIndex = await getMasterIndex(root, userName);
         if (masterIndex) {
@@ -154,10 +254,20 @@ const saveGaiaIndexesToCache = async (userName) => {
             const index = db.transaction('cached-indexes').store.index('section');
             if (index) {
                 for (let i = 0; i < mediaTypes?.length; i++) {
-                    let cursor = await index.openCursor(`${publicKey}_${mediaTypes[i]}`);
+                    let cursor = await index.openCursor(`${ownerPublicKey}_${mediaTypes[i]}`);
                     while (cursor) {
-                        existingCache[cursor.value.id] = cursor.value.lastUpdated;
-                        hasExisting = true;
+                        let canAdd = true;
+                        if (!userName && cursor.value.shareName) {
+                            canAdd = false;
+                        }
+                        else if (userName
+                            && (!cursor.value.shareName || userName.toLowerCase() !== cursor.value.shareName.toLowerCase())) {
+                            canAdd = false;
+                        }
+                        if (canAdd) {
+                            existingCache[cursor.value.id] = cursor.value.lastUpdated;
+                            hasExisting = true;
+                        }
                         cursor = await cursor.continue();
                     }
                 }
@@ -167,29 +277,34 @@ const saveGaiaIndexesToCache = async (userName) => {
             missing = [];
             for (let indexFile in masterIndex) {
                 try {
-                    let id = await createIndexID(publicKey, indexFile);
-                    existing[id] = true;
+                    let indexID = await createIndexID(ownerPublicKey, indexFile);
+                    existing[indexID] = true;
                     let lastUpdated = masterIndex[indexFile];
-                    let lastProcessed = existingCache[id];
+                    let lastProcessed = existingCache[indexID];
                     if (!lastProcessed || (lastUpdated && lastUpdated > lastProcessed)) {
-                        let json = await userSession.getFile(indexFile, {
-                            decrypt: true,
-                            verify: true,
-                            username: userName
-                        });
-                        let mediaEntry = JSON.parse(json);
-                        if (!latestUpdated || latestUpdated < mediaEntry.lastUpdatedUTC) {
-                            latestUpdated = mediaEntry.lastUpdatedUTC;
+                        let id = getMediaIDFromIndexFileName(indexFile);
+                        if (id) {
+                            let mediaType = getMediaTypeFromIndexFileName(indexFile);
+                            let privateKey = await getPrivateKey(userSession, id, mediaType, userName);
+                            let json = await userSession.getFile(indexFile, {
+                                decrypt: privateKey,
+                                username: userName
+                            });
+                            let mediaEntry = JSON.parse(json);
+                            if (!latestUpdated || latestUpdated < mediaEntry.lastUpdatedUTC) {
+                                latestUpdated = mediaEntry.lastUpdatedUTC;
+                            }
+                            let encryptedJson = await userSession.encryptContent(json);
+                            let cachedIndex = {
+                                data: encryptedJson,
+                                id: indexID,
+                                section: `${ownerPublicKey}_${mediaEntry.mediaType}`,
+                                lastUpdated: mediaEntry.lastUpdatedUTC,
+                                shareName: userName
+                            }
+                            await db.put('cached-indexes', cachedIndex);
+                            ret++;
                         }
-                        let encryptedJson = await userSession.encryptContent(json);
-                        let cachedIndex = {
-                            data: encryptedJson,
-                            id: id,
-                            section: `${publicKey}_${mediaEntry.mediaType}`,
-                            lastUpdated: mediaEntry.lastUpdatedUTC
-                        }
-                        await db.put('cached-indexes', cachedIndex);
-                        ret++;
                     }
                 }
                 catch (mediaError) {
@@ -235,6 +350,23 @@ const initializeUserSession = (e) => {
     }
 }
 
+const getFriends = async () => {
+    let friends = {};
+    try {
+        let json = await userSession?.getFile("friends", {
+            decrypt: true,
+            verify: true
+        });
+        if (json) {
+            friends = JSON.parse(json);
+        }
+    }
+    catch {
+
+    }
+    return friends;
+}
+
 self.addEventListener(
     "message",
     async function (e) {
@@ -245,18 +377,20 @@ self.addEventListener(
                     await initializeDatabase();
                     initializeUserSession(e);
                     if (userSession?.isUserSignedIn()) {
-                        let masterIndex;
                         try {
-                            let json = await userSession.getFile('master-index', {
+                            await userSession.getFile('master-index', {
                                 decrypt: true,
                                 verify: true
                             });
-                            masterIndex = JSON.parse(json);
                         }
                         catch {
-                            masterIndex = await createMasterIndex();
+                            await createMasterIndex();
                         }
                         let results = await saveGaiaIndexesToCache();
+                        let friends = await getFriends();
+                        for (key in friends) {
+                            saveGaiaIndexesToCache(key);
+                        }
                         postMessage({
                             message: 'loadcomplete',
                             result: true,

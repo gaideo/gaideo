@@ -87,6 +87,7 @@ export default function App() {
   const [db, setDB] = useState<IDBPDatabase<unknown> | null>(null);
 
   const [userData, setUserData] = useState<UserData | null>(null);
+
   const themeConfig = createMuiTheme(themeObject);
   const authOptions = {
     appDetails: {
@@ -102,7 +103,6 @@ export default function App() {
       setWorker(initGaiaWorker());
     },
   };
-
 
   useEffect(() => {
     const refresh = async () => {
@@ -125,7 +125,11 @@ export default function App() {
       <Connect authOptions={authOptions}>
         <HashRouter>
 
-          <Main userData={userData} setUserDataCallback={setUserDataCallback} db={db} worker={worker ? worker : null} />
+          <Main 
+            userData={userData} 
+            setUserDataCallback={setUserDataCallback} 
+            db={db} 
+            worker={worker ? worker : null}/>
         </HashRouter>
       </Connect>
     </ThemeProvider>

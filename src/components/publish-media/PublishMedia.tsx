@@ -19,10 +19,10 @@ import { BrowseEntry } from '../../models/browse-entry';
 import { Photo } from '../../models/photo';
 import { ImagesLoadedCallback, UpdateProgressCallback, VideosLoadedCallback } from '../../models/callbacks';
 import { readBinaryFile } from '../../utilities/file-utils';
-import { MediaFileEntry } from '../../models/media-file-entry';
+import { MediaFileEntry, MediaFileOperation } from '../../models/media-file-entry';
 import { computeNameFromImageFile, encryptVideo } from '../../utilities/ffmpeg-utils';
 
-interface ParamTypes { id: string; }
+interface ParamTypes { id: string; type: string }
 
 const useStyles = makeStyles((theme: Theme) =>
     createStyles({
@@ -72,7 +72,7 @@ export default function PublishVideo(props: PublishVideoProps) {
     const { userSession } = authOptions;
     const userData = userSession?.loadUserData();
     const history = useHistory();
-    const { id } = useParams<ParamTypes>();
+    const { id, type } = useParams<ParamTypes>();
     const [steps, setSteps] = useState(Array<string>());
 
     const onFilesAdded = (files: any) => {
@@ -191,7 +191,7 @@ export default function PublishVideo(props: PublishVideoProps) {
         if (lowerCase) {
             lname = name.toLocaleLowerCase();
         }
-        return lname.endsWith('.mp4') 
+        return lname.endsWith('.mp4')
             || lname.endsWith('.mov')
             || lname.endsWith('.avi');
     }
@@ -362,7 +362,7 @@ export default function PublishVideo(props: PublishVideoProps) {
         return false;
     }
 
-    const uploadVideo = async (file: any, mediaEntry: MediaEntry, userSession: UserSession, keyExists: boolean) => {
+    const uploadVideo = async (file: any, mediaEntry: MediaEntry, userSession: UserSession, privateKey: string) => {
         try {
             let name: string = `videos/${mediaEntry.id}/${file.name}`;
             if (needEncryptVideoFile(file.name)) {
@@ -373,25 +373,16 @@ export default function PublishVideo(props: PublishVideoProps) {
                 else {
                     data = await readBinaryFile(file);
                 }
-                let privateKey: string | undefined | null;
-                if (keyExists) {
-                    privateKey = await getPrivateKey(userSession, userSession.loadUserData(), mediaEntry.id, MediaType.Video);
-                }
-                else {
-                    privateKey = await createPrivateKey(userSession, mediaEntry.id, MediaType.Video);
-                }
-                if (privateKey) {
-                    let buffer = Buffer.from(new Uint8Array(data));
-                    let publicKey = getPublicKeyFromPrivate(privateKey);
-                    let encryptedData = await userSession.encryptContent(buffer, {
-                        publicKey: publicKey
-                    });
-                    await userSession.putFile(name, encryptedData, {
-                        encrypt: false,
-                        wasString: true,
-                        contentType: 'application/json'
-                    })
-                }
+                let buffer = Buffer.from(new Uint8Array(data));
+                let publicKey = getPublicKeyFromPrivate(privateKey);
+                let encryptedData = await userSession.encryptContent(buffer, {
+                    publicKey: publicKey
+                });
+                await userSession.putFile(name, encryptedData, {
+                    encrypt: false,
+                    wasString: true,
+                    contentType: 'application/json'
+                })
             }
             else {
                 let data;
@@ -426,47 +417,52 @@ export default function PublishVideo(props: PublishVideoProps) {
             if (mediaEntry.manifest.length > 1) {
                 copy.title = `${title} (${file.name})`;
             }
-            let indexFile = `images/${copy.id}.index`;
-            await userSession.putFile(indexFile, JSON.stringify(copy), {
-                encrypt: true,
-                wasString: true,
-                sign: true
-            });
+            let privateKey = await createPrivateKey(userSession, copy.id, MediaType.Images);
+            let publicKey = getPublicKeyFromPrivate(privateKey);
+            if (privateKey) {
+                let indexFile = `images/${copy.id}.index`;
 
-            try {
-                let name: string = `images/${copy.id}/${file.name}`;
-
-                let data = await readBinaryFile(file);
-                let privateKey = await createPrivateKey(userSession, copy.id, MediaType.Images);
-                let buffer = Buffer.from(new Uint8Array(data));
-                let publicKey = getPublicKeyFromPrivate(privateKey);
-                let encryptedData = await userSession.encryptContent(buffer, {
+                let encryptedData = await userSession.encryptContent(JSON.stringify(copy), {
                     publicKey: publicKey
                 });
-                await userSession.putFile(name, encryptedData, {
+                await userSession.putFile(indexFile, encryptedData, {
                     encrypt: false,
                     wasString: true,
                     contentType: 'application/json'
                 })
 
-                ret = {
-                    mediaEntry: copy,
-                    indexFile: indexFile
-                };
-            }
-            catch (error) {
-                console.log(`Unable to upload image ${file.name}.`)
                 try {
-                    await userSession?.deleteFile(indexFile, {
-                        wasSigned: false
+                    let name: string = `images/${copy.id}/${file.name}`;
+
+                    let data = await readBinaryFile(file);
+                    let buffer = Buffer.from(new Uint8Array(data));
+                    let encryptedData = await userSession.encryptContent(buffer, {
+                        publicKey: publicKey
                     });
+                    await userSession.putFile(name, encryptedData, {
+                        encrypt: false,
+                        wasString: true,
+                        contentType: 'application/json'
+                    })
+
+                    ret = {
+                        mediaEntry: copy,
+                        indexFile: indexFile
+                    };
                 }
-                catch (e2) {
-                    console.log(`Unable to cleanup index file: ${indexFile}.`)
-                    console.log(e2);
+                catch (error) {
+                    console.log(`Unable to upload image ${file.name}.`)
+                    try {
+                        await userSession?.deleteFile(indexFile, {
+                            wasSigned: false
+                        });
+                    }
+                    catch (e2) {
+                        console.log(`Unable to cleanup index file: ${indexFile}.`)
+                        console.log(e2);
+                    }
                 }
             }
-
         }
         catch (error) {
             console.log(error);
@@ -501,38 +497,38 @@ export default function PublishVideo(props: PublishVideoProps) {
         let fname = `videos/${mediaEntry.id}.index`;
 
         props.updateProgressCallback(`Uploading index file...`, null);
-        await userSession.putFile(fname, JSON.stringify(mediaEntry), {
-            encrypt: true,
-            wasString: true,
-            sign: true
-        });
-        let failed = false;
-        let keyExists = false;
-        for (let i = 0; i < files.length; i++) {
-            props.updateProgressCallback(`Uploading ${files[i].name} (${i+1}/${files.length})...`, null);
-            if (files[i].name !== 'keys') {
-                let success = await uploadVideo(files[i], mediaEntry, userSession, keyExists)
-                if (!success) {
-                    success = await uploadVideo(files[i], mediaEntry, userSession, keyExists);
-                }
-                if (!success) {
-                    failed = true;
-                    break;
-                }
-                if (needEncryptVideoFile(files[i].name)) {
-                    keyExists = true;
+        let privateKey = await createPrivateKey(userSession, mediaEntry.id, MediaType.Video);
+        if (privateKey) {
+            let publicKey = getPublicKeyFromPrivate(privateKey);
+            let encryptedData = await userSession.encryptContent(JSON.stringify(mediaEntry), {
+                publicKey: publicKey
+            });
+            await userSession.putFile(fname, encryptedData, {
+                encrypt: false,
+                wasString: true,
+                contentType: 'application/json'
+            })
+
+            let failed = false;
+            for (let i = 0; i < files.length; i++) {
+                props.updateProgressCallback(`Uploading ${files[i].name} (${i + 1}/${files.length})...`, null);
+                if (files[i].name !== 'keys') {
+                    let success = await uploadVideo(files[i], mediaEntry, userSession, privateKey)
+                    if (!success) {
+                        success = await uploadVideo(files[i], mediaEntry, userSession, privateKey);
+                    }
+                    if (!success) {
+                        failed = true;
+                        break;
+                    }
                 }
             }
-        }
-        if (failed) {
-            deleteVideoEntry(mediaEntry, userSession, null);
-        }
-        else {
-            await updateMasterIndex(userSession, [{ indexFile: fname, mediaEntry: mediaEntry }]);
-            props.worker?.postMessage({
-                message: "cacheindexes",
-                indexFiles: [fname]
-            });
+            if (failed) {
+                deleteVideoEntry(mediaEntry, userSession, null, props.updateProgressCallback);
+            }
+            else {
+                await updateMasterIndex(userSession, props.worker, MediaFileOperation.Add, [{ indexFile: fname, mediaEntry: mediaEntry }]);
+            }
         }
     }
 
@@ -557,9 +553,9 @@ export default function PublishVideo(props: PublishVideoProps) {
                 }
                 else if (mediaEntry.mediaType === MediaType.Images) {
                     let mediaEntries: MediaFileEntry[] = [];
-                    for (let i = 0; i < files.length; i++) {                        
-                        props.updateProgressCallback(`Uploading ${files[i].name} (${i+1}/${files.length})`, null)
-                        if (files[i].name !== 'keys') {                            
+                    for (let i = 0; i < files.length; i++) {
+                        props.updateProgressCallback(`Uploading ${files[i].name} (${i + 1}/${files.length})`, null)
+                        if (files[i].name !== 'keys') {
                             let me = await uploadImage(files[i], mediaEntry, userSession);
                             if (me) {
                                 mediaEntries.push(me);
@@ -567,11 +563,7 @@ export default function PublishVideo(props: PublishVideoProps) {
                         }
                     }
                     if (mediaEntries.length > 0) {
-                        await updateMasterIndex(userSession, mediaEntries);
-                        props.worker?.postMessage({
-                            message: 'cacheindexes',
-                            indexFiles: mediaEntries.map(x => x.indexFile)
-                        })
+                        await updateMasterIndex(userSession, props.worker, MediaFileOperation.Add, mediaEntries);
                     }
                 }
 
@@ -600,65 +592,70 @@ export default function PublishVideo(props: PublishVideoProps) {
         if (userSession) {
             let mediaType = MediaType.Video;
             let indexFile = `videos/${id}.index`;
-            if (isImageName(id, true)) {
+            if (type === (MediaType.Images as number).toString()) {
                 mediaType = MediaType.Images;
                 indexFile = `images/${id}.index`
             }
-            let result = await loadBrowseEntry(userSession, indexFile, false, mediaType);
+            let result = await loadBrowseEntry(userSession, indexFile, false);
             let be = result as BrowseEntry;
             if (be) {
-                let kwds: string[] | null = null;
-                if (keywords?.length > 0) {
-                    kwds = keywords.split(/\s+/g).filter(x => x.trim().length !== 0);
-                }
-                let nowUTC: Date = getNow();
-                be.mediaEntry.title = title;
-                be.mediaEntry.description = description;
-                be.mediaEntry.keywords = kwds;
-                be.mediaEntry.lastUpdatedUTC = nowUTC;
-                await userSession.putFile(indexFile, JSON.stringify(be.mediaEntry), {
-                    encrypt: true,
-                    sign: true,
-                    wasString: true
-                });
-                updateMasterIndex(userSession, [{ indexFile: indexFile, mediaEntry: be.mediaEntry }]);
-                props.worker?.postMessage({
-                    message: "updatecache",
-                    indexFile: indexFile
-                });
-                if (mediaType === MediaType.Images) {
-                    if (props.photos) {
-                        for (let i = 0; i < props.photos?.length; i++) {
-                            let photo = props.photos[i];
-                            if (photo.browseEntry.mediaEntry.id === be.mediaEntry.id) {
-                                let newPhoto = { ...photo };
-                                newPhoto.browseEntry.mediaEntry = { ...be.mediaEntry };
-                                newPhoto.browseEntry.age = computeAge(be.mediaEntry.lastUpdatedUTC);
-                                let newPhotos = props.photos.slice();
-                                newPhotos.splice(i, 1);
-                                newPhotos.unshift(newPhoto);
-                                props.imagesLoadedCallback(newPhotos);
-                                break;
+                let privateKey = await getPrivateKey('', userSession, be.mediaEntry.id, be.mediaEntry.mediaType);
+                if (privateKey) {
+                    let kwds: string[] | null = null;
+                    if (keywords?.length > 0) {
+                        kwds = keywords.split(/\s+/g).filter(x => x.trim().length !== 0);
+                    }
+                    let nowUTC: Date = getNow();
+                    be.mediaEntry.title = title;
+                    be.mediaEntry.description = description;
+                    be.mediaEntry.keywords = kwds;
+                    be.mediaEntry.lastUpdatedUTC = nowUTC;
+
+                    let publicKey = getPublicKeyFromPrivate(privateKey);
+                    let encryptedData = await userSession.encryptContent(JSON.stringify(be.mediaEntry), {
+                        publicKey: publicKey
+                    });
+                    await userSession.putFile(indexFile, encryptedData, {
+                        encrypt: false,
+                        wasString: true,
+                        contentType: 'application/json'
+                    })
+    
+                    updateMasterIndex(userSession, props.worker, MediaFileOperation.Update, [{ indexFile: indexFile, mediaEntry: be.mediaEntry }]);
+                    if (mediaType === MediaType.Images) {
+                        if (props.photos) {
+                            for (let i = 0; i < props.photos?.length; i++) {
+                                let photo = props.photos[i];
+                                if (photo.browseEntry.mediaEntry.id === be.mediaEntry.id) {
+                                    let newPhoto = { ...photo };
+                                    newPhoto.browseEntry.mediaEntry = { ...be.mediaEntry };
+                                    newPhoto.browseEntry.age = computeAge(be.mediaEntry.lastUpdatedUTC);
+                                    let newPhotos = props.photos.slice();
+                                    newPhotos.splice(i, 1);
+                                    newPhotos.unshift(newPhoto);
+                                    props.imagesLoadedCallback(newPhotos);
+                                    break;
+                                }
                             }
                         }
+                        history.push('/images/browse');
                     }
-                    history.push('/images/browse');
-                }
-                else {
-                    if (props.videos) {
-                        for (let i = 0; i < props.videos?.length; i++) {
-                            let video = props.videos[i];
-                            if (video.mediaEntry.id === be.mediaEntry.id) {
-                                let newVideo = { ...video, mediaEntry: be.mediaEntry };
-                                newVideo.age = computeAge(be.mediaEntry.lastUpdatedUTC);
-                                let newVideos = props.videos.slice();
-                                newVideos.splice(i, 1);
-                                newVideos.unshift(newVideo);
-                                props.videosLoadedCallback(newVideos);
+                    else {
+                        if (props.videos) {
+                            for (let i = 0; i < props.videos?.length; i++) {
+                                let video = props.videos[i];
+                                if (video.mediaEntry.id === be.mediaEntry.id) {
+                                    let newVideo = { ...video, mediaEntry: be.mediaEntry };
+                                    newVideo.age = computeAge(be.mediaEntry.lastUpdatedUTC);
+                                    let newVideos = props.videos.slice();
+                                    newVideos.splice(i, 1);
+                                    newVideos.unshift(newVideo);
+                                    props.videosLoadedCallback(newVideos);
+                                }
                             }
                         }
+                        history.push('/videos/browse');
                     }
-                    history.push('/videos/browse');
                 }
             }
         }
@@ -709,13 +706,11 @@ export default function PublishVideo(props: PublishVideoProps) {
         const refresh = async () => {
             let foundExisting: boolean = false;
             if (id && userSession) {
-                let mediaType = MediaType.Video;
                 let indexFile = `videos/${id}.index`;
-                if (isImageName(id, true)) {
-                    mediaType = MediaType.Images;
+                if (type === (MediaType.Images as number).toString()) {
                     indexFile = `images/${id}.index`
                 }
-                let result = await loadBrowseEntry(userSession, indexFile, false, mediaType);
+                let result = await loadBrowseEntry(userSession, indexFile, false);
                 let be = result as BrowseEntry;
                 if (be) {
                     foundExisting = true;
@@ -733,7 +728,7 @@ export default function PublishVideo(props: PublishVideoProps) {
             }
         }
         refresh();
-    }, [userSession, id])
+    }, [userSession, id, type])
 
     return (
         <div className={classes.root} style={{ paddingTop: 25, paddingLeft: !props.isMobile ? 40 : 10 }}>

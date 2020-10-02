@@ -7,12 +7,15 @@ import { useHistory } from "react-router-dom";
 import { BrowseEntry } from "../../models/browse-entry";
 import { MediaEntry } from "../../models/media-entry";
 import { Photo } from '../../models/photo';
-import { deleteImageEntry } from "../../utilities/data-utils";
+import { deleteImageEntry, getFriends, shareMedia } from "../../utilities/data-utils";
 import MenuItem from '@material-ui/core/MenuItem';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import ConfirmDialog from "../confirm-dialog/ConfirmDialog";
 import { getImageSize } from "../../utilities/image-utils";
 import { UserSession } from "blockstack";
+import { UpdateProgressCallback } from "../../models/callbacks";
+import { ShareUserEntry } from "../../models/share-user-entry";
+import ShareUserDialog from "../share-user-dialog/ShareUserDialog";
 
 interface CheckmarkProps {
   selected: boolean
@@ -85,20 +88,26 @@ interface DeleteSelectedCallback {
   (): void
 }
 
+interface ShareSelectedCallback {
+  (shareUsers: ShareUserEntry[]): void
+}
+
 export interface SelectedImageProps {
-  index: number,
-  photo: Photo,
-  margin: string,
-  direction: string,
-  top: string,
-  left: string,
-  selected: boolean,
-  selectable: boolean,
-  totalCount: number,
-  deleteCallback: DeletePhotoCallback,
-  selectImageCallback: SelectImageCallback,
-  toggleSelectionCallback: ToggleSelectionCallback
-  deleteSelectedCallback: DeleteSelectedCallback,
+  index: number;
+  photo: Photo;
+  margin: string;
+  direction: string;
+  top: string;
+  left: string;
+  selected: boolean;
+  selectable: boolean;
+  totalCount: number;
+  deleteCallback: DeletePhotoCallback;
+  selectImageCallback: SelectImageCallback;
+  toggleSelectionCallback: ToggleSelectionCallback;
+  deleteSelectedCallback: DeleteSelectedCallback;
+  shareSelectedCallback: ShareSelectedCallback;
+  updateProgressCallback: UpdateProgressCallback;
   worker: Worker | null
 }
 
@@ -112,10 +121,12 @@ const SelectedImage = (props: SelectedImageProps) => {
   const open = Boolean(anchorEl);
   const history = useHistory();
   const [isSelected, setIsSelected] = useState(props.selected);
+  const [shareUserOpen, setShareUserOpen] = React.useState(false);
+  const [shareUsers, setShareUsers] = React.useState<Array<string>>([]);
 
   const deleteImage = async (mediaEntry: MediaEntry, userSession: UserSession | undefined) => {
     if (userSession) {
-      await deleteImageEntry(mediaEntry, userSession, props.worker);
+      await deleteImageEntry(mediaEntry, userSession, props.worker, props.updateProgressCallback);
     }
   }
 
@@ -136,6 +147,18 @@ const SelectedImage = (props: SelectedImageProps) => {
     }
   }
 
+  const shareUserResult = (item: MediaEntry, result: ShareUserEntry[] | undefined) => {
+    setShareUserOpen(false);
+    if (userSession && result && result.length > 0) {
+      if (props.selectable) {
+        props.shareSelectedCallback(result);
+      }
+      else {
+        trackPromise(shareMedia([item], userSession, result));
+      }
+    }
+  }
+
   const navImage = (browseEntry: BrowseEntry) => {
     history.push(`/images/show/${browseEntry.mediaEntry.id}`)
   }
@@ -149,7 +172,7 @@ const SelectedImage = (props: SelectedImageProps) => {
     setAnchorEl(null);
   }
 
-  const handleMenu = (option: string) => {
+  const handleMenu = async (option: string) => {
     if (option === 'Delete') {
       if (menuMediaEntry) {
         setConfirmOpen(true);
@@ -157,11 +180,24 @@ const SelectedImage = (props: SelectedImageProps) => {
     }
     else if (option === 'Edit') {
       if (menuMediaEntry) {
-        history.push(`/publish/${menuMediaEntry.id}`);
+        history.push(`/publish/${menuMediaEntry.mediaType}/${menuMediaEntry.id}`);
       }
     }
     else if (option.startsWith('Select')) {
       props.toggleSelectionCallback();
+    }
+    else if (option === 'Share') {
+      if (userSession?.isUserSignedIn()) {
+        let friends = await getFriends(userSession);
+        if (friends) {
+          const users: string[] = []
+          for (let key in friends) {
+            users.push(key);
+          }
+          setShareUsers(users);
+          setShareUserOpen(true);
+        }
+      }
     }
     handleClose();
   };
@@ -217,9 +253,9 @@ const SelectedImage = (props: SelectedImageProps) => {
     }
     return option
   }
-  
+
   const photo = createPhoto(props.photo);
-  
+
   const getConfirmMessage = (title: string | undefined) => {
     if (props.selectable) {
       return 'Are you sure you want to delete all selected images?'
@@ -230,10 +266,11 @@ const SelectedImage = (props: SelectedImageProps) => {
   return (
     <Box>
       <div
-        style={{margin: props.margin, height: photo.height, width: photo.width, ...cont }}
+        style={{ margin: props.margin, height: photo.height, width: photo.width, ...cont }}
         className={!isSelected ? "not-selected" : ""}
       >
         <ConfirmDialog open={confirmOpen} item={menuMediaEntry} onResult={deleteConfirmResult} title="Confirm Delete" message={getConfirmMessage(menuMediaEntry?.title)} />
+        <ShareUserDialog open={shareUserOpen} mediaEntry={menuMediaEntry} initialUsers={shareUsers} shareUsersResult={shareUserResult} />
 
         <Checkmark selected={isSelected ? true : false} />
         <img height={100} width={100}
@@ -246,7 +283,7 @@ const SelectedImage = (props: SelectedImageProps) => {
         />
         <style>{`.not-selected:hover{outline:2px solid #06befa}`}</style>
       </div>
-      <Toolbar style={{paddingLeft: 5, justifyContent: 'space-between' }} disableGutters={true}>
+      <Toolbar style={{ paddingLeft: 5, justifyContent: 'space-between' }} disableGutters={true}>
         <div onClick={() => { navImage(props.photo.browseEntry) }}>
           <Typography variant="caption">{`${props.photo.browseEntry.mediaEntry?.title} (${props.photo.browseEntry.age})`}</Typography>
         </div>

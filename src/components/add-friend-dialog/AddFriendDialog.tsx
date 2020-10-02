@@ -48,12 +48,12 @@ export default function AddFriendDialog(props: AddFriendDialogProps) {
             let userData = userSession.loadUserData();
             if (!isSelf(un, userData)) {
                 try {
-                    publicKey = await getPublicKey(un);
+                    publicKey = await getPublicKey(userData, un);
                 }
                 catch {
                     un = `${un}.id.blockstack`;
                     try {
-                        publicKey = await getPublicKey(un);
+                        publicKey = await getPublicKey(userData, un);
                     }
                     catch { }
                 }

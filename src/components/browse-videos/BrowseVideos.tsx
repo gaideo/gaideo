@@ -6,13 +6,13 @@ import "./BrowseVideos.css";
 import MenuItem from '@material-ui/core/MenuItem';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import { useHistory } from 'react-router-dom';
-import { loadBrowseEntryFromCache, deleteVideoEntry, getCacheEntries, getFriends } from '../../utilities/data-utils';
+import { loadBrowseEntryFromCache, deleteVideoEntry, getCacheEntries, getFriends, shareMedia, getSelectedFriends } from '../../utilities/data-utils';
 import ConfirmDialog from '../confirm-dialog/ConfirmDialog';
 import ShareUserDialog from '../share-user-dialog/ShareUserDialog';
 import { MediaEntry, MediaType } from '../../models/media-entry';
 import { trackPromise } from 'react-promise-tracker';
 import { IDBPDatabase } from 'idb';
-import { VideosLoadedCallback } from '../../models/callbacks';
+import { UpdateProgressCallback, VideosLoadedCallback } from '../../models/callbacks';
 import { UserSession } from 'blockstack';
 import { getImageSize } from '../../utilities/image-utils';
 import { ShareUserEntry } from '../../models/share-user-entry';
@@ -30,6 +30,7 @@ interface BrowseVideosProps {
     videosLoadedCallback: VideosLoadedCallback;
     db?: IDBPDatabase<unknown> | null | undefined;
     worker: Worker | null;
+    updateProgressCallback: UpdateProgressCallback;
 }
 
 export function BrowseVideos(props: BrowseVideosProps) {
@@ -44,14 +45,21 @@ export function BrowseVideos(props: BrowseVideosProps) {
     const open = Boolean(anchorEl);
     const [loadingMore, setLoadingMore] = React.useState(false);
     const [lastCacheKeys, setLastCacheKeys] = React.useState<IDBValidKey[] | null>(null);
+    const [selectedFriends, setSelectedFriends] = React.useState<Array<string> | null | undefined>([]);
+
     const MAX_MORE = 12;
 
-    useEffect(() => {
+    const db = props.db;
+    const videosLoadedCallback = props.videosLoadedCallback;
+    const videos = props.videos;
 
+    useEffect(() => {
         const refresh = async () => {
             let arr: BrowseEntry[] = [];
-            if (userSession && props.db) {
-                let cacheResults = await getCacheEntries(userSession, props.db, MediaType.Video, MAX_MORE, null);
+            if (db && userSession?.isUserSignedIn()) {
+                let sf = await getSelectedFriends(userSession);
+                setSelectedFriends(sf);
+                let cacheResults = await getCacheEntries(userSession, db, MediaType.Video, MAX_MORE, null, sf);
                 if (cacheResults.cacheEntries?.length > 0) {
                     for (let i = 0; i < cacheResults.cacheEntries?.length; i++) {
                         let decryptedData = await userSession.decryptContent(cacheResults.cacheEntries[i].data) as string;
@@ -68,7 +76,7 @@ export function BrowseVideos(props: BrowseVideosProps) {
                                     be.actualHeight = img.height;
                                     be.actualWidth = img.width;
                                     arr.push(be);
-                                    props.videosLoadedCallback(arr.slice())
+                                    videosLoadedCallback(arr.slice())
                                 };
                                 img.src = src;
 
@@ -81,17 +89,17 @@ export function BrowseVideos(props: BrowseVideosProps) {
                 }
             }
         }
-        if (props.videos.length === 0) {
+        if (videos.length === 0) {
             refresh();
         }
-    }, [userSession, history, props]);
+    }, [userSession, db, videos, videosLoadedCallback]);
 
     const loadMore = async () => {
         if (userSession && props.db && lastCacheKeys && lastCacheKeys?.length > 0) {
             setLoadingMore(true);
             try {
                 let arr: BrowseEntry[] = props.videos;
-                let cacheResults = await getCacheEntries(userSession, props.db, MediaType.Video, MAX_MORE, lastCacheKeys);
+                let cacheResults = await getCacheEntries(userSession, props.db, MediaType.Video, MAX_MORE, lastCacheKeys, selectedFriends);
                 if (cacheResults.cacheEntries?.length > 0) {
                     for (let i = 0; i < cacheResults.cacheEntries?.length; i++) {
                         let decryptedData = await userSession.decryptContent(cacheResults.cacheEntries[i].data) as string;
@@ -129,7 +137,7 @@ export function BrowseVideos(props: BrowseVideosProps) {
 
     const deleteVideo = async (mediaEntry: MediaEntry, userSession: UserSession | undefined) => {
         if (userSession) {
-            await deleteVideoEntry(mediaEntry, userSession, props.worker);
+            await deleteVideoEntry(mediaEntry, userSession, props.worker, props.updateProgressCallback);
         }
     }
 
@@ -143,14 +151,19 @@ export function BrowseVideos(props: BrowseVideosProps) {
         }
     }
 
-    const shareUserResult = (result: ShareUserEntry[] | undefined) => {
+    const shareUserResult = (item: MediaEntry, result: ShareUserEntry[] | undefined) => {
         setShareUserOpen(false);
-        if (result && result.length > 0) {
+        if (userSession && result && result.length > 0) {
+            trackPromise(shareMedia([item], userSession, result));
         }
     }
 
     const navVideo = (browseEntry: BrowseEntry) => {
-        history.push(`/videos/show/${browseEntry.mediaEntry.id}?height=${browseEntry.actualHeight}&width=${browseEntry.actualWidth}`)
+        let user = '';
+        if (browseEntry.mediaEntry.userName) {
+            user = `/${browseEntry.mediaEntry.userName}`;
+        }
+        history.push(`/videos/show/${browseEntry.mediaEntry.id}${user}?height=${browseEntry.actualHeight}&width=${browseEntry.actualWidth}`)
     }
 
     const handleClick = (event: React.MouseEvent<HTMLElement>, mediaEntry: MediaEntry) => {
@@ -189,20 +202,20 @@ export function BrowseVideos(props: BrowseVideosProps) {
 
     return (
         <Fragment>
-            <ShareUserDialog open={shareUserOpen} initialUsers={shareUsers} shareUsersResult={shareUserResult}/>
+            <ShareUserDialog open={shareUserOpen} mediaEntry={menuMediaEntry} initialUsers={shareUsers} shareUsersResult={shareUserResult} />
             <ConfirmDialog open={confirmOpen} item={menuMediaEntry} onResult={deleteConfirmResult} title="Confirm Delete" message={`Are you sure you want to delete ${menuMediaEntry?.title}?`} />
             <Toolbar style={{ flexWrap: 'wrap', justifyContent: 'space-around' }}>
                 {props.videos.map(x => (
                     <div key={x.mediaEntry.id}>
-                        <div 
-                        style={{ 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            width: 331.734, 
-                            height: 173.641, 
-                            overflow: 'hidden',
-                            background: 'black',
-                            cursor: 'pointer',                             
+                        <div
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                width: 331.734,
+                                height: 173.641,
+                                overflow: 'hidden',
+                                background: 'black',
+                                cursor: 'pointer',
                             }} onClick={() => { navVideo(x); }}>
                             <img
                                 style={{ marginLeft: 'auto', marginRight: 'auto' }}
@@ -216,33 +229,35 @@ export function BrowseVideos(props: BrowseVideosProps) {
                             <div onClick={() => { navVideo(x) }}>
                                 <Typography variant="caption">{`${x.mediaEntry?.title} (${x.age})`}</Typography>
                             </div>
-                            <div>
-                                <IconButton
-                                    style={{ minWidth: 30, outline: 'none', paddingTop: 0, paddingBottom: 0, paddingLeft: 5, paddingRight: 5 }}
-                                    onClick={(e) => handleClick(e, x.mediaEntry)}
-                                >
-                                    <MoreVertIcon />
-                                </IconButton>
-                                <Menu
-                                    id="video-actions"
-                                    anchorEl={anchorEl}
-                                    keepMounted
-                                    open={open}
-                                    onClose={handleClose}
-                                    PaperProps={{
-                                        style: {
-                                            maxHeight: ITEM_HEIGHT * 4.5,
-                                            width: '20ch',
-                                        },
-                                    }}
-                                >
-                                    {options.map((option) => (
-                                        <MenuItem key={option} selected={option === 'Edit'} onClick={() => handleMenu(option)}>
-                                            {option}
-                                        </MenuItem>
-                                    ))}
-                                </Menu>
-                            </div>
+                            {!x.fromShare &&
+                                <div>
+                                    <IconButton
+                                        style={{ minWidth: 30, outline: 'none', paddingTop: 0, paddingBottom: 0, paddingLeft: 5, paddingRight: 5 }}
+                                        onClick={(e) => handleClick(e, x.mediaEntry)}
+                                    >
+                                        <MoreVertIcon />
+                                    </IconButton>
+                                    <Menu
+                                        id="video-actions"
+                                        anchorEl={anchorEl}
+                                        keepMounted
+                                        open={open}
+                                        onClose={handleClose}
+                                        PaperProps={{
+                                            style: {
+                                                maxHeight: ITEM_HEIGHT * 4.5,
+                                                width: '20ch',
+                                            },
+                                        }}
+                                    >
+                                        {options.map((option) => (
+                                            <MenuItem key={option} selected={option === 'Edit'} onClick={() => handleMenu(option)}>
+                                                {option}
+                                            </MenuItem>
+                                        ))}
+                                    </Menu>
+                                </div>
+                            }
                         </Toolbar>
                     </div>
                 ))}

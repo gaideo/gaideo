@@ -1,4 +1,4 @@
-import React, { Fragment, useCallback, useState } from 'react';
+import React, { Fragment, useCallback, useEffect, useState } from 'react';
 import AddIcon from '@material-ui/icons/Add';
 import DeleteIcon from '@material-ui/icons/Delete';
 import CloseIcon from '@material-ui/icons/Close';
@@ -6,20 +6,25 @@ import AsyncSelect from 'react-select/async';
 import makeAnimated from 'react-select/animated';
 import { Icon } from '@material-ui/core';
 import AddFriendDialog from '../add-friend-dialog/AddFriendDialog';
-import { getFriends, updateFriends } from '../../utilities/data-utils';
+import { getFriends, getSelectedFriends, updateFriends } from '../../utilities/data-utils';
 import { useConnect } from '@blockstack/connect';
 import { trackPromise } from 'react-promise-tracker';
 import ConfirmDialog from '../confirm-dialog/ConfirmDialog';
 
 
 interface ShowCallback {
-    (show: boolean) : void
+    (show: boolean): void
+}
+
+interface SaveSelectedFriendsCallback {
+    (selected: Array<any> | undefined | null): void
 }
 
 interface FriendsProps {
     show: boolean;
-    showCallback : ShowCallback;
-    isMobile: boolean
+    showCallback: ShowCallback;
+    isMobile: boolean;
+    saveSelectedFriendsCallback: SaveSelectedFriendsCallback;
 }
 
 export function Friends(props: FriendsProps) {
@@ -28,10 +33,26 @@ export function Friends(props: FriendsProps) {
     const { userSession } = authOptions;
 
     const [openAdd, setOpenAdd] = useState(false);
-    const [selectedFriends, setSelectedFriends] = useState<Array<any> | null | undefined>([]);
     const [confirmDeleteFriendOpen, setConfirmDeleteFriendOpen] = React.useState(false);
     const [friendList, setFriendList] = useState('');
+    const [selectedFriends, setSelectedFriends] = useState<Array<any> | undefined | null>([]);
 
+    useEffect(() => {
+        const refresh = async () => {
+            if (userSession?.isUserSignedIn()) {
+                let arr = await getSelectedFriends(userSession);
+                if (arr && arr.length > 0) {
+                    setSelectedFriends(arr.map(x => {
+                        return {
+                            label: x,
+                            value: x
+                        }
+                    }));
+                }
+            }
+        }
+        refresh();
+    }, [userSession]);
     const handleAddFriendOpen = () => {
         setOpenAdd(true);
     };
@@ -124,7 +145,7 @@ export function Friends(props: FriendsProps) {
                                 loadOptions={promiseOptions}
                                 components={animatedComponents}
                                 isMulti
-                                onChange={(newValue, actionMeta) => { setSelectedFriends(newValue); }} />
+                                onChange={(newValue, actionMeta) => { setSelectedFriends(newValue); props.saveSelectedFriendsCallback(newValue); }} />
                         </div>
                         <div onClick={handleAddFriendOpen} style={{ cursor: 'pointer', paddingTop: 5, paddingLeft: 3, paddingRight: 3 }}><Icon><AddIcon /></Icon></div>
                         <div onClick={handleDeleteFriend} style={{ cursor: 'pointer', paddingTop: 5, paddingLeft: 3, paddingRight: 3 }}><Icon><DeleteIcon /></Icon></div>

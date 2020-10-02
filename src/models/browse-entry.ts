@@ -5,6 +5,7 @@ export interface BrowseEntry {
     previewImage?: string;
     source: string;
     age: string;
+    fromShare: boolean;
     previewImageHeight?: number;
     previewImageWidth?: number;
     actualHeight?: number;

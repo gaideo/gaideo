@@ -7,11 +7,13 @@ import Dialog from '@material-ui/core/Dialog';
 import FormControlLabel from '@material-ui/core/FormControlLabel';
 import { Checkbox } from '@material-ui/core';
 import { ShareUserEntry } from '../../models/share-user-entry';
+import { MediaEntry } from '../../models/media-entry';
 
 export interface ShareUserDialogProps {
     open: boolean;
     initialUsers: string[];
-    shareUsersResult: (shareEntries?: ShareUserEntry[]) => void;
+    mediaEntry: MediaEntry | null;
+    shareUsersResult: (item: MediaEntry, shareEntries?: ShareUserEntry[]) => void;
 }
 
 export default function ShareUserDialog(props: ShareUserDialogProps) {
@@ -33,11 +35,15 @@ export default function ShareUserDialog(props: ShareUserDialogProps) {
     };
 
     const handleCancel = () => {
-        props.shareUsersResult();
+        if (props.mediaEntry) {
+            props.shareUsersResult(props.mediaEntry);
+        }
     };
 
     const handleOk = () => {
-        props.shareUsersResult(shareEntries.slice());
+        if (props.mediaEntry) {
+            props.shareUsersResult(props.mediaEntry, shareEntries.slice());
+        }
     };
 
     const handleChange = (event: React.ChangeEvent<HTMLInputElement>, index: number) => {

@@ -12,7 +12,10 @@ interface VideoPlayerContext {
   current: any;
 }
 
-interface ParamTypes { id: string; width: string, height: string }
+interface ParamTypes { 
+  id: string; 
+  owner?: string
+}
 
 interface VideoPlayerProps {
   isMobile: boolean
@@ -21,7 +24,7 @@ interface VideoPlayerProps {
 export function VideoPlayer(props: VideoPlayerProps) {
   const { authOptions } = useConnect();
   const { userSession } = authOptions;
-  const { id } = useParams<ParamTypes>();
+  const { id, owner } = useParams<ParamTypes>();
   const videoRef = useRef<HTMLVideoElement>(null);
   const history = useHistory();
   const location = useLocation();
@@ -57,7 +60,12 @@ export function VideoPlayer(props: VideoPlayerProps) {
       let hls: Hls | null;
     const playVideo = async () => {
       if (userSession?.isUserSignedIn() && videoRef?.current) {
-        let videoKey = await getEncryptedMediaFile(userSession, `videos/${id}/key.bin`, id, MediaType.Video);
+        let userData = userSession.loadUserData();
+        let userName: string | undefined = undefined;
+        if (owner && owner !== userData.username) {
+          userName = owner;
+        }
+        let videoKey = await getEncryptedMediaFile(userSession, `videos/${id}/key.bin`, id, MediaType.Video, userName);
         if (videoKey) {
           context.current.videoKey = videoKey;
 
@@ -75,7 +83,9 @@ export function VideoPlayer(props: VideoPlayerProps) {
           }
 
           if (Hls.isSupported()) {
-            let source = await userSession.getFileUrl(`videos/${id}/master.m3u8`)
+            let source = await userSession.getFileUrl(`videos/${id}/master.m3u8`, {
+              username: userName
+            })
             if (source) {
               hls = new Hls({
                 loader: customLoader
@@ -119,7 +129,7 @@ export function VideoPlayer(props: VideoPlayerProps) {
         hls.destroy();
       }
     }
-  }, [userSession, location.search, history, id]);
+  }, [userSession, location.search, history, id, owner]);
 
 
   return (

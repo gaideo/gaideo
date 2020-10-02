@@ -5,31 +5,36 @@ import { BrowseEntry } from "../../models/browse-entry";
 import { loadBrowseEntry } from "../../utilities/data-utils";
 import { Typography } from '@material-ui/core';
 import { getNow, getLongDate } from '../../utilities/time-utils';
-import { MediaType } from '../../models/media-entry';
 
-interface ParamTypes {   id: string; } 
+interface ParamTypes { id: string; owner?: string }
 
 export function VideoDescription() {
     const { authOptions } = useConnect();
     const { userSession } = authOptions;
-    const {id} = useParams<ParamTypes>();
+    const { id, owner } = useParams<ParamTypes>();
     const [browseEntry, setBrowseEntry] = useState<BrowseEntry | null>(null);
 
     useEffect(() => {
         const getDescription = async () => {
-            let indexFile: string = `videos/${id}.index`;
-            if (userSession) {
-                let be = await loadBrowseEntry(userSession, indexFile, false, MediaType.Video);
+            if (userSession?.isUserSignedIn()) {
+                let userData = userSession.loadUserData();
+                let userName: string | undefined = undefined;
+                if (owner && owner !== userData.username) {
+                    userName = owner;
+                }
+
+                let indexFile: string = `videos/${id}.index`;
+                let be = await loadBrowseEntry(userSession, indexFile, false, userName);
                 if (be) {
                     setBrowseEntry(be);
                 }
-            }
+        }
         }
         getDescription();
-    }, [userSession, id]);
+    }, [userSession, id, owner]);
 
     return (
-        <div style={{paddingLeft: 5}}>
+        <div style={{ paddingLeft: 5 }}>
             <div>
                 <Typography variant="h5">{browseEntry?.mediaEntry?.title}</Typography>
             </div>
