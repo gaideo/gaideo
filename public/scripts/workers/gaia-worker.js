@@ -350,21 +350,21 @@ const initializeUserSession = (e) => {
     }
 }
 
-const getFriends = async () => {
-    let friends = {};
+const getShares = async () => {
+    let shares = {};
     try {
-        let json = await userSession?.getFile("friends", {
+        let json = await userSession?.getFile("share-index", {
             decrypt: true,
             verify: true
         });
         if (json) {
-            friends = JSON.parse(json);
+            shares = JSON.parse(json);
         }
     }
     catch {
 
     }
-    return friends;
+    return shares;
 }
 
 self.addEventListener(
@@ -387,8 +387,8 @@ self.addEventListener(
                             await createMasterIndex();
                         }
                         let results = await saveGaiaIndexesToCache();
-                        let friends = await getFriends();
-                        for (key in friends) {
+                        let shares = await getShares();
+                        for (key in shares) {
                             saveGaiaIndexesToCache(key);
                         }
                         postMessage({

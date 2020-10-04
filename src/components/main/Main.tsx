@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, Fragment } from 'react';
-import { makeStyles, Divider, List, ListItem, ListItemText, AppBar, Toolbar, Drawer, Typography, Hidden, IconButton, Button, Menu, MenuItem, CircularProgress, Backdrop, Icon, LinearProgress } from "@material-ui/core";
+import { makeStyles, Divider, List, ListItem, ListItemText, AppBar, Toolbar, Drawer, Typography, Hidden, IconButton, Button, Menu, MenuItem, CircularProgress, Backdrop, Icon, LinearProgress, withStyles, Theme, createStyles } from "@material-ui/core";
 import MenuIcon from '@material-ui/icons/MenuOutlined';
 import PublishIcon from '@material-ui/icons/PublishOutlined';
 import MovieIcon from '@material-ui/icons/MovieOutlined';
@@ -27,7 +27,8 @@ import { IDBPDatabase } from 'idb';
 import { Friends } from '../friends/Friends';
 import ProfileDialog from '../profile-dialog/ProfileDialog';
 import ConfirmDialog from '../confirm-dialog/ConfirmDialog';
-import { listFiles, saveSelectedFriends } from '../../utilities/data-utils';
+import { listFiles, saveSelectedShares, saveSelectedGroup } from '../../utilities/data-utils';
+import { Playlists } from '../playlists/Playlists';
 
 const drawerWidth = 240;
 
@@ -36,7 +37,7 @@ interface SetUserDataCallback {
 }
 
 interface SetSelectedFriendsCallback {
-    (selectedFriends: Array<any> | undefined | null) : void
+    (selectedFriends: Array<any> | undefined | null): void
 }
 
 interface MainProps {
@@ -111,6 +112,7 @@ export default function Main(props: MainProps) {
     const [videos, setVideos] = useState(new Array<BrowseEntry>());
     const [showClose, setShowClose] = useState(false);
     const [showFriends, setShowFriends] = useState(false);
+    const [showPlaylists, setShowPlaylists] = useState(false);
 
     if (!publishSelected && isPublish) {
         setPublishSelected(true);
@@ -182,6 +184,11 @@ export default function Main(props: MainProps) {
         }
         else if (option === 'friends') {
             setShowFriends(true);
+            setShowPlaylists(false);
+        }
+        else if (option === 'playlists') {
+            setShowPlaylists(true);
+            setShowFriends(false);
         }
         else if (option === 'profile') {
             setProfileOpen(true);
@@ -253,6 +260,10 @@ export default function Main(props: MainProps) {
         setShowFriends(show);
     }, []);
 
+    const showPlaylistsCallback = useCallback((show: boolean) => {
+        setShowPlaylists(show);
+    }, []);
+
     const updateProgressCallback = useCallback((message: string | null, subMessage: string | null) => {
         setProgressMessage(message);
         setProgressSubMessage(subMessage);
@@ -262,15 +273,23 @@ export default function Main(props: MainProps) {
         setProfileOpen(open);
     }, []);
 
-    const saveSelectedFriendsCallback = useCallback(async(selected: Array<any> | undefined | null) => {
+    const saveSelectedFriendsCallback = useCallback(async (selected: Array<any> | undefined | null) => {
         let arr: string[] = [];
         if (selected) {
-            for (let i=0; i<selected.length; i++) {
+            for (let i = 0; i < selected.length; i++) {
                 arr.push(selected[i].value);
             }
         }
         if (userSession?.isUserSignedIn()) {
-            await saveSelectedFriends(userSession, arr);
+            await saveSelectedShares(userSession, arr);
+        }
+        setVideos(new Array<BrowseEntry>());
+        setPhotos(new Array<Photo>());
+    }, [userSession]);
+
+    const saveSelectedPlaylistCallback = useCallback(async (selected: string | null) => {
+        if (userSession?.isUserSignedIn()) {
+            await saveSelectedGroup(userSession, selected);
         }
         setVideos(new Array<BrowseEntry>());
         setPhotos(new Array<Photo>());
@@ -297,7 +316,7 @@ export default function Main(props: MainProps) {
                 return true;
             });
             for (let i = 0; i < deleteme.length; i++) {
-                setProgressMessage(`Deleting ${deleteme[i]} (${i+1}/${deleteme.length})`);
+                setProgressMessage(`Deleting ${deleteme[i]} (${i + 1}/${deleteme.length})`);
                 await userSession?.deleteFile(deleteme[i])
             }
 
@@ -357,6 +376,18 @@ export default function Main(props: MainProps) {
 
     const isMobile = mobileCheck();
 
+    const BorderLinearProgress = withStyles((theme: Theme) =>
+        createStyles({
+            root: {
+                height: 10,
+                borderRadius: 5,
+            },
+            bar: {
+                borderRadius: 5,
+            },
+        }),
+    )(LinearProgress);
+
     const appBar = (
         <AppBar style={{ visibility: browseImagesRoute && slideShowIndex != null ? 'hidden' : undefined, backgroundColor: '#d4e3ea', color: 'rgba(0,0,0,.87)' }} position='fixed'>
             {
@@ -369,7 +400,7 @@ export default function Main(props: MainProps) {
                             padding: 20,
                             border: progressMessage && progressMessage?.length > 0 ? '1px solid' : undefined,
                             borderColor: 'white',
-                            maxWidth: 600,
+                            maxWidth: 800,
                             wordWrap: 'break-word'
                         }}>
 
@@ -381,9 +412,9 @@ export default function Main(props: MainProps) {
                                 <Typography variant="h6">{progressSubMessage}</Typography>
                             </div>
 
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 10 }}>
                                 <div style={{ width: '100%' }}>
-                                    <LinearProgress />
+                                    <BorderLinearProgress />
                                 </div>
                             </div>
                         </div>
@@ -484,6 +515,7 @@ export default function Main(props: MainProps) {
                                 >
                                     <MenuItem onClick={() => { handleMenu("profile") }}>Profile</MenuItem>
                                     <MenuItem onClick={() => { handleMenu("friends") }}>Friends</MenuItem>
+                                    <MenuItem onClick={() => { handleMenu("playlists") }}>Playlists</MenuItem>
                                     <MenuItem onClick={() => { handleMenu("resetcache") }}>Reset Cache</MenuItem>
                                     <MenuItem onClick={() => { handleMenu("deleteall") }}>Delete All Data</MenuItem>
                                     <MenuItem onClick={() => { handleMenu("listfiles") }}>List Files</MenuItem>
@@ -522,6 +554,7 @@ export default function Main(props: MainProps) {
 
                     <div style={{ paddingTop: browseImagesRoute && slideShowIndex != null ? 0 : 18, paddingLeft: 0, paddingRight: 0 }}>
                         <Friends show={showFriends} showCallback={showFriendsCallback} isMobile={isMobile} saveSelectedFriendsCallback={saveSelectedFriendsCallback} />
+                        <Playlists show={showPlaylists} showCallback={showPlaylistsCallback} isMobile={isMobile} saveSelectedPlaylistCallback={saveSelectedPlaylistCallback} />
 
                         <Switch>
                             <Route path="/videos/show/:id/:owner">
@@ -556,9 +589,9 @@ export default function Main(props: MainProps) {
                                         slideShowIndex={slideShowIndex}
                                         setSlideShowIndexCallback={setSlideShowIndexCallback}
                                         db={props.db}
-                                        worker={props.worker} 
+                                        worker={props.worker}
                                         isMobile={isMobile}
-                                        updateProgressCallback={updateProgressCallback}/>
+                                        updateProgressCallback={updateProgressCallback} />
                                 ) : (
                                         <Welcome />
                                     )

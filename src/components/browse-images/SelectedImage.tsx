@@ -7,7 +7,8 @@ import { useHistory } from "react-router-dom";
 import { BrowseEntry } from "../../models/browse-entry";
 import { MediaEntry } from "../../models/media-entry";
 import { Photo } from '../../models/photo';
-import { deleteImageEntry, getFriends, shareMedia } from "../../utilities/data-utils";
+import { getShares, shareMedia } from "../../utilities/data-utils";
+import { deleteImageEntry } from "../../utilities/media-utils";
 import MenuItem from '@material-ui/core/MenuItem';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import ConfirmDialog from "../confirm-dialog/ConfirmDialog";
@@ -188,7 +189,7 @@ const SelectedImage = (props: SelectedImageProps) => {
     }
     else if (option === 'Share') {
       if (userSession?.isUserSignedIn()) {
-        let friends = await getFriends(userSession);
+        let friends = await getShares(userSession);
         if (friends) {
           const users: string[] = []
           for (let key in friends) {

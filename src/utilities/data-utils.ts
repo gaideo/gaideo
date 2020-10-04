@@ -1,78 +1,15 @@
 import { MediaEntry, MediaType } from "../models/media-entry";
 import { getPublicKeyFromPrivate, lookupProfile, makeECPrivateKey, publicKeyToAddress, UserSession } from "blockstack";
-import { BrowseEntry } from "../models/browse-entry";
-import { base64ArrayBuffer } from "./encoding-utils";
-import { computeAge } from "./time-utils";
 import { IDBPDatabase } from 'idb';
 import { CacheEntry, CacheResults } from "../models/cache-entry";
-import { MediaFileEntry, MediaFileOperation } from "../models/media-file-entry";
+import { MediaFileEntry } from "../models/media-file-entry";
 import { UserData } from "blockstack/lib/auth/authApp";
 import { ShareUserEntry } from "../models/share-user-entry";
-import { UpdateProgressCallback } from "../models/callbacks";
-import { MediaRootInfo } from "../models/media-root-info";
+import { FileRootInfo } from "../models/file-root-info";
+import { Group } from "../models/group";
+import { FileOperation } from "../models/file-operation";
 
 
-export async function deleteVideoEntry(
-    mediaEntry: MediaEntry,
-    userSession: any,
-    gaiaWorker: Worker | null,
-    updateProgress: UpdateProgressCallback | undefined = undefined
-) {
-    if (mediaEntry?.manifest?.length > 0) {
-        try {
-            let previewFile: string | null = null;
-            for (let i = 0; i < mediaEntry.manifest.length; i++) {
-                let entry = mediaEntry.manifest[i];
-                let fileName = `videos/${mediaEntry.id}/${entry}`;
-                if (entry.endsWith('_preview.jpg')) {
-                    previewFile = fileName;
-                    continue;
-                }
-                try {
-                    if (updateProgress) {
-                        updateProgress(`Deleting video file: ${fileName}.`, null);
-                    }
-                    await userSession?.deleteFile(fileName, {
-                        wasSigned: false
-                    });
-                }
-                catch (error) {
-                    console.log(error);
-                }
-            }
-            if (previewFile) {
-                if (updateProgress) {
-                    updateProgress(`Deleting video file: ${previewFile}.`, null);
-                }
-                await userSession?.deleteFile(previewFile, {
-                    wasSigned: false
-                });
-            }
-            try {
-                let keyFile = `videos/${mediaEntry.id}/private.key`;
-                if (updateProgress) {
-                    updateProgress(`Deleting video file: ${keyFile}.`, null);
-                }
-                await userSession?.deleteFile(keyFile)
-            }
-            catch { }
-
-            let indexUrl: string = `videos/${mediaEntry.id}.index`;
-            if (updateProgress) {
-                updateProgress(`Deleting index file: ${indexUrl}.`, null);
-            }
-            await userSession?.deleteFile(indexUrl, {
-                wasSigned: false
-            });
-            await updateMasterIndex(userSession, gaiaWorker, MediaFileOperation.Delete, [{ indexFile: indexUrl, mediaEntry: mediaEntry }], undefined);
-        }
-        catch (ex) {
-            console.log(`Unable to delete video: ${mediaEntry.id}`)
-            console.log(ex);
-        }
-    }
-
-}
 
 export async function getPublicKey(userData: UserData, userName: string | null | undefined) {
     let publicKey;
@@ -124,10 +61,10 @@ export function getUserDirectory(publicKey: string) {
     return `share/${addr}/`;
 }
 
-export async function getMediaRootInfo(
+export async function getShareRootInfo(
     userData: UserData,
     isReading: boolean,
-    userName?: string): Promise<MediaRootInfo> {
+    userName?: string): Promise<FileRootInfo> {
     let ret = '';
     let publicKey;
     if (userName) {
@@ -147,107 +84,67 @@ export async function getMediaRootInfo(
         publicKey: publicKey
     };
 }
-export async function getSelectedFriends(userSession: UserSession) {
-    let selectedFriends: string[] = []
-    let missingFile = false;
-    try {
-        let json = await userSession.getFile('selected-friends', {
-            decrypt: true,
-            verify: true,
-        }) as string;
-        if (json) {
-            selectedFriends = JSON.parse(json);
-        }
-    }
-    catch {
-        missingFile = true;
-    }
-    if (missingFile) {
-        try {
-            await saveSelectedFriends(userSession, []);
-        }
-        catch {
-
-        }
-    }
-    if (selectedFriends.length === 0) {
-        return null;
-    }
-    return selectedFriends;
-}
-
-export async function saveSelectedFriends(userSession: UserSession, selectedFriends: string[]) {
-    try {
-        await userSession.putFile('selected-friends', JSON.stringify(selectedFriends), {
-            encrypt: true,
-            sign: true
-        })
-    }
-    catch (error) {
-        console.log(error);
-    }
-}
 
 export async function updateMasterIndex(
     userSession: UserSession,
     gaiaWorker: Worker | null,
-    operation: MediaFileOperation,
-    mediaFileEntries: MediaFileEntry[],
+    operation: FileOperation,
+    fileEntries: MediaFileEntry[],
     userName: string | undefined = undefined
 ) {
     try {
         if (userName
-            && operation !== MediaFileOperation.Share
-            && operation !== MediaFileOperation.Unshare
-            && operation !== MediaFileOperation.Update
-            && operation !== MediaFileOperation.Delete) {
+            && operation !== FileOperation.Share
+            && operation !== FileOperation.Unshare
+            && operation !== FileOperation.Update
+            && operation !== FileOperation.Delete) {
             const msg = `Invalid operation for user name: ${userName}.  Only share and unshare operations are allowed`
             console.log(msg);
             throw Error(msg);
         }
-        if (mediaFileEntries?.length > 0) {
+        if (fileEntries?.length > 0) {
             let fileName = null;
             let publicFileName = null;
             let userData = userSession.loadUserData();
-            let mediaRootInfo = await getMediaRootInfo(userData, false, userName);
-            if (mediaRootInfo.root.length > 0) {
-                publicFileName = `${mediaRootInfo.root}master-index`;
-                fileName = `${mediaRootInfo.root}internal-index`;
+            let fileRootInfo = await getShareRootInfo(userData, false, userName);
+            if (fileRootInfo.root.length > 0) {
+                publicFileName = `${fileRootInfo.root}master-index`;
+                fileName = `${fileRootInfo.root}internal-index`;
             }
             else {
                 fileName = "master-index";
             }
             if (fileName) {
-                let masterIndex = await getMasterIndex(userSession, fileName, operation !== MediaFileOperation.Delete);
+                let masterIndex = await getMasterIndex(userSession, fileName, operation !== FileOperation.Delete);
                 if (masterIndex) {
                     let modified = false;
                     const privateLookup: any = {};
-                    for (let i = 0; i < mediaFileEntries.length; i++) {
-                        let mediaEntry = mediaFileEntries[i].mediaEntry;
-                        if (operation === MediaFileOperation.Delete
-                            || operation === MediaFileOperation.Unshare) {
-                            if (masterIndex[mediaFileEntries[i].indexFile]) {
-                                delete masterIndex[mediaFileEntries[i].indexFile];
+                    for (let i = 0; i < fileEntries.length; i++) {
+                        let mediaEntry = fileEntries[i].mediaEntry;
+                        if (operation === FileOperation.Delete
+                            || operation === FileOperation.Unshare) {
+                            if (masterIndex[fileEntries[i].indexFile]) {
+                                delete masterIndex[fileEntries[i].indexFile];
                                 modified = true;
                             }
                         }
                         else {
-                            if (operation !== MediaFileOperation.Update || masterIndex[mediaFileEntries[i].indexFile]) {
-                                masterIndex[mediaFileEntries[i].indexFile] = mediaFileEntries[i].mediaEntry.lastUpdatedUTC;
+                            if (operation !== FileOperation.Update || masterIndex[fileEntries[i].indexFile]) {
+                                masterIndex[fileEntries[i].indexFile] = fileEntries[i].mediaEntry.lastUpdatedUTC;
                                 modified = true;
                             }
                         }
-                        if ((operation === MediaFileOperation.Share
-                            || operation === MediaFileOperation.Unshare
-                            || operation === MediaFileOperation.Delete)
+                        if ((operation === FileOperation.Share
+                            || operation === FileOperation.Unshare
+                            || operation === FileOperation.Delete)
                             && modified && publicFileName) {
                             const mt = mediaEntry.mediaType ? MediaType.Images : MediaType.Video;
-                            const sharePrivateKeyFile = getPrivateKeyFileName(mediaRootInfo.root, mediaEntry.id, mt);
-                            if (operation === MediaFileOperation.Share) {
+                            const sharePrivateKeyFile = getPrivateKeyFileName(fileRootInfo.root, mediaEntry.id, mt);
+                            if (operation === FileOperation.Share) {
                                 let privateKey = await getPrivateKey('', userSession, mediaEntry.id, mt);
                                 if (privateKey) {
                                     let encryptedKey = await userSession.encryptContent(privateKey, {
-                                        publicKey: mediaRootInfo.publicKey
+                                        publicKey: fileRootInfo.publicKey
                                     })
                                     privateLookup[sharePrivateKeyFile] = encryptedKey;
                                 }
@@ -268,9 +165,9 @@ export async function updateMasterIndex(
                             sign: true,
                             wasString: true
                         });
-                        if (publicFileName && mediaRootInfo.publicKey) {
+                        if (publicFileName && fileRootInfo.publicKey) {
                             for (let key in privateLookup) {
-                                if (operation === MediaFileOperation.Share) {
+                                if (operation === FileOperation.Share) {
                                     userSession.putFile(key, privateLookup[key], {
                                         encrypt: false,
                                         sign: false,
@@ -283,7 +180,7 @@ export async function updateMasterIndex(
                             }
                             let json = JSON.stringify(masterIndex);
                             let encryptedJson = await userSession.encryptContent(json, {
-                                publicKey: mediaRootInfo.publicKey
+                                publicKey: fileRootInfo.publicKey
                             });
                             await userSession.putFile(publicFileName, encryptedJson, {
                                 encrypt: false,
@@ -291,11 +188,11 @@ export async function updateMasterIndex(
                                 wasString: true
                             });
                         }
-                        else if (operation === MediaFileOperation.Delete || operation === MediaFileOperation.Update) {
-                            let friends = await getFriends(userSession);
-                            if (friends) {
-                                for (let userName in friends) {
-                                    await updateMasterIndex(userSession, null, operation, mediaFileEntries, userName);
+                        else if (operation === FileOperation.Delete || operation === FileOperation.Update) {
+                            let shares = await getShares(userSession);
+                            if (shares) {
+                                for (let userName in shares) {
+                                    await updateMasterIndex(userSession, null, operation, fileEntries, userName);
                                 }
                             }
                         }
@@ -308,8 +205,8 @@ export async function updateMasterIndex(
 
     }
     if (gaiaWorker) {
-        if (operation === MediaFileOperation.Delete) {
-            mediaFileEntries.forEach(x => {
+        if (operation === FileOperation.Delete) {
+            fileEntries.forEach(x => {
                 gaiaWorker.postMessage({
                     message: "removecache",
                     indexFile: x.indexFile
@@ -318,18 +215,18 @@ export async function updateMasterIndex(
             })
 
         }
-        else if (operation === MediaFileOperation.Update) {
-            mediaFileEntries.forEach(x => {
+        else if (operation === FileOperation.Update) {
+            fileEntries.forEach(x => {
                 gaiaWorker.postMessage({
                     message: "updatecache",
                     indexFile: x.indexFile
                 });
             })
         }
-        else if (operation === MediaFileOperation.Add) {
+        else if (operation === FileOperation.Add) {
             gaiaWorker.postMessage({
                 message: "cacheindexes",
-                indexFiles: mediaFileEntries.map(x => x.indexFile)
+                indexFiles: fileEntries.map(x => x.indexFile)
             });
         }
     }
@@ -343,7 +240,7 @@ export async function listFiles(userSession: UserSession) {
 }
 
 export async function shareMedia(mediaEntries: MediaEntry[], userSession: UserSession, shareUsers: ShareUserEntry[]) {
-    const mediaFiles: MediaFileEntry[] = mediaEntries.map(x => {
+    const files: MediaFileEntry[] = mediaEntries.map(x => {
         return {
             mediaEntry: x,
             indexFile: `${x.mediaType === MediaType.Images ? 'images' : 'videos'}/${x.id}.index`
@@ -351,48 +248,9 @@ export async function shareMedia(mediaEntries: MediaEntry[], userSession: UserSe
     });
     for (let i = 0; i < shareUsers.length; i++) {
         let su = shareUsers[i]
-        let op = su.share ? MediaFileOperation.Share : MediaFileOperation.Unshare;
-        updateMasterIndex(userSession, null, op, mediaFiles, su.userName);
+        let op = su.share ? FileOperation.Share : FileOperation.Unshare;
+        await updateMasterIndex(userSession, null, op, files, su.userName);
     }
-}
-
-export async function deleteImageEntry(
-    mediaEntry: MediaEntry,
-    userSession: UserSession,
-    gaiaWorker: Worker | null,
-    updateProgress: UpdateProgressCallback | undefined = undefined) {
-    if (mediaEntry?.manifest?.length > 0) {
-        for (let i = 0; i < mediaEntry.manifest.length; i++) {
-            const entry = mediaEntry.manifest[i];
-            const fileName = `images/${mediaEntry.id}/${entry}`;
-            if (updateProgress) {
-                updateProgress(`Deleting image file: ${fileName}`, null);
-            }
-            await userSession?.deleteFile(fileName, {
-                wasSigned: false
-            });
-            try {
-                let keyFile = `images/${mediaEntry.id}/private.key`;
-                if (updateProgress) {
-                    updateProgress(`Deleting private key: ${keyFile}`, null);
-                }
-                await userSession?.deleteFile(keyFile, {
-                    wasSigned: false
-                });
-            }
-            catch { }
-        }
-
-        let indexUrl: string = `images/${mediaEntry.id}.index`;
-        if (updateProgress) {
-            updateProgress(`Deleting index file: ${indexUrl}`, null);
-        }
-        await userSession?.deleteFile(indexUrl, {
-            wasSigned: false
-        });
-        await updateMasterIndex(userSession, gaiaWorker, MediaFileOperation.Delete, [{ indexFile: indexUrl, mediaEntry: mediaEntry }], undefined);
-    }
-
 }
 
 export async function getCacheEntries(
@@ -503,7 +361,7 @@ export async function getPrivateKey(
     return privateKey;
 }
 
-export async function getEncryptedMediaFile(
+export async function getEncryptedFile(
     userSession: UserSession,
     fileName: string,
     id: string,
@@ -515,7 +373,7 @@ export async function getEncryptedMediaFile(
     if (userData.username !== owner) {
         userName = owner;
     }
-    let mediaRootInfo = await getMediaRootInfo(userData, true, userName);
+    let mediaRootInfo = await getShareRootInfo(userData, true, userName);
     let privateKey = await getPrivateKey(mediaRootInfo.root, userSession, id, mediaType, userName);
     if (privateKey) {
         let encryptedContent = await userSession.getFile(fileName, {
@@ -534,123 +392,6 @@ export async function getEncryptedMediaFile(
     return content;
 }
 
-export async function loadBrowseEntryFromCache(userSession: UserSession, mediaEntry: MediaEntry, loadPreviewImage: boolean): Promise<any> {
-    let be: BrowseEntry | null = null;
-    try {
-        if (mediaEntry) {
-            let source: string = '';
-            if (mediaEntry.mediaType === MediaType.Video) {
-                source = await userSession?.getFileUrl(`videos/${mediaEntry.id}/master.m3u8`, {
-                    username: mediaEntry.userName
-                });
-            }
-            if (source || mediaEntry.mediaType === MediaType.Images) {
-
-                let content: string | ArrayBuffer | undefined;
-
-                if (loadPreviewImage) {
-                    let previewImageName = mediaEntry.previewImageName;
-                    if (!previewImageName) {
-                        if (mediaEntry.mediaType === MediaType.Images) {
-                            previewImageName = `images/${mediaEntry.id}/${mediaEntry.manifest[0]}`;
-                        }
-                        else {
-                            previewImageName = `videos/${mediaEntry.id}/${mediaEntry.id}_preview.jpg`;
-                        }
-                    }
-                    content = await getEncryptedMediaFile(userSession, previewImageName, mediaEntry.id, mediaEntry.mediaType === MediaType.Images ? MediaType.Images : MediaType.Video, mediaEntry.userName);
-                }
-                else {
-                    content = undefined;
-                }
-                let userData = userSession.loadUserData();
-                be = {
-                    mediaEntry: mediaEntry,
-                    previewImage: '',
-                    source: source,
-                    age: computeAge(mediaEntry.lastUpdatedUTC),
-                    fromShare: (mediaEntry.userName && mediaEntry.userName !== userData.username) as boolean
-                };
-
-                let buffer = content as ArrayBuffer;
-                if (!loadPreviewImage || buffer) {
-                    const base64 = base64ArrayBuffer(buffer);
-                    if (be) {
-                        be.previewImage = base64;
-                    }
-                }
-            }
-        }
-    }
-    catch (error) {
-        console.log(error);
-    }
-    return be;
-}
-
-export function getShareNames(selectedFriends: Array<any> | null | undefined) {
-    let shareNames: string[] | undefined = undefined;
-    if (selectedFriends) {
-        const arr: string[] = [];
-        selectedFriends.forEach(x => {
-            if (x?.value) {
-                arr.push(x.value);
-            }
-        })
-        if (arr.length > 0) {
-            shareNames = arr;
-        }
-    }
-    return shareNames;
-}
-
-export function getMediaIDFromIndexFileName(fileName: string) {
-    let i = fileName.lastIndexOf('/');
-    if (i >= 0) {
-        return fileName.substring(i + 1).replace('.index', '');
-    }
-    return null;
-}
-
-export function getMediaTypeFromIndexFileName(fileName: string) {
-    let ret = MediaType.Video;
-    if (fileName.startsWith('images/')) {
-        ret = MediaType.Images;
-    }
-    return ret;
-}
-
-export async function loadBrowseEntry(
-    userSession: UserSession,
-    indexFile: string,
-    loadPreviewImage: boolean,
-    userName?: string): Promise<any> {
-    let be: BrowseEntry | null = null;
-    try {
-        let mediaID = getMediaIDFromIndexFileName(indexFile);
-        let mediaType = getMediaTypeFromIndexFileName(indexFile);
-        if (mediaID) {
-            let userData = userSession.loadUserData();
-            let mediaRootInfo = await getMediaRootInfo(userData, true, userName);
-            let privateKey = await getPrivateKey(mediaRootInfo.root, userSession, mediaID, mediaType, userName);
-            if (privateKey) {
-                let content = await userSession?.getFile(indexFile, {
-                    decrypt: privateKey,
-                    username: userName
-                });
-                if (content && typeof (content) === "string") {
-                    let mediaEntry = JSON.parse(content);
-                    be = await loadBrowseEntryFromCache(userSession, mediaEntry, loadPreviewImage);
-                }
-            }
-        }
-    }
-    catch (error) {
-        console.log(error);
-    }
-    return be;
-}
-
 export async function createPrivateKey(
     userSession: UserSession,
     id: string,
@@ -665,39 +406,187 @@ export async function createPrivateKey(
     return privateKey;
 }
 
-export async function getFriends(userSession: UserSession | null | undefined) {
-    let friends: any = {};
+export async function getSelectedShares(userSession: UserSession) {
+    let selectedShares: string[] = []
+    let missingFile = false;
     try {
-        let json = await userSession?.getFile("friends", {
+        let json = await userSession.getFile('selected-shares', {
+            decrypt: true,
+            verify: true,
+        }) as string;
+        if (json) {
+            selectedShares = JSON.parse(json);
+        }
+    }
+    catch {
+        missingFile = true;
+    }
+    if (missingFile) {
+        try {
+            await saveSelectedShares(userSession, []);
+        }
+        catch {
+
+        }
+    }
+    if (selectedShares.length === 0) {
+        return null;
+    }
+    return selectedShares;
+}
+
+export async function saveSelectedShares(userSession: UserSession, selectedShares: string[]) {
+    try {
+        await userSession.putFile('selected-shares', JSON.stringify(selectedShares), {
+            encrypt: true,
+            sign: true
+        })
+    }
+    catch (error) {
+        console.log(error);
+    }
+}
+
+export function getShareNames(selectedShares: Array<any> | null | undefined) {
+    let shareNames: string[] | undefined = undefined;
+    if (selectedShares) {
+        const arr: string[] = [];
+        selectedShares.forEach(x => {
+            if (x?.value) {
+                arr.push(x.value);
+            }
+        })
+        if (arr.length > 0) {
+            shareNames = arr;
+        }
+    }
+    return shareNames;
+}
+
+export async function getShares(userSession: UserSession | null | undefined) {
+    let shares: any = {};
+    try {
+        let json = await userSession?.getFile("share-index", {
             decrypt: true,
             verify: true
         }) as string;
         if (json) {
-            friends = JSON.parse(json);
+            shares = JSON.parse(json);
         }
     }
     catch {
 
     }
-    return friends;
+    return shares;
 }
 
-export async function updateFriends(userSession: UserSession, userNames: string[], deleteFlag: boolean = false) {
-    let friends = await getFriends(userSession);
+export async function updateShares(userSession: UserSession, userNames: string[], deleteFlag: boolean = false) {
+    let shares = await getShares(userSession);
     if (userNames.length > 0) {
         for (let i = 0; i < userNames.length; i++) {
             let userName = userNames[i];
             if (deleteFlag) {
-                delete friends[userName.toLowerCase()];
+                delete shares[userName.toLowerCase()];
             }
             else {
-                friends[userName.toLowerCase()] = userName;
+                shares[userName.toLowerCase()] = userName;
             }
         }
     }
-    await userSession.putFile("friends", JSON.stringify(friends), {
+    await userSession.putFile("share-index", JSON.stringify(shares), {
         encrypt: true,
         wasString: true,
         sign: true
     });
+}
+
+export async function updateGroup(userSession: UserSession, group: Group, deleteFlag: boolean = false) {
+    let groups = await getGroups(userSession);
+    if (groups) {
+        if (deleteFlag) {
+            delete groups[group.id];
+        }
+        else {
+            groups[group.id] = group;
+        }
+    }
+    await userSession.putFile("group-index", JSON.stringify(groups), {
+        encrypt: true,
+        wasString: true,
+        sign: true
+    });
+}
+
+export async function getGroups(userSession: UserSession | null | undefined) {
+    let groups: any = {};
+    try {
+        let json = await userSession?.getFile("group-index", {
+            decrypt: true,
+            verify: true
+        }) as string;
+        if (json) {
+            groups = JSON.parse(json);
+        }
+    }
+    catch {
+
+    }
+    return groups;
+}
+
+export async function getSelectedGroup(userSession: UserSession) {
+    let selectedGroup: string | null = null;
+    let missingFile = false;
+    try {
+        let text = await userSession.getFile('selected-group', {
+            decrypt: true,
+            verify: true,
+        }) as string;
+        if (text && text.length > 0) {
+            selectedGroup = text;
+        }
+    }
+    catch {
+        missingFile = true;
+    }
+    if (missingFile) {
+        try {
+            await saveSelectedGroup(userSession, null);
+        }
+        catch {
+
+        }
+    }
+    return selectedGroup;
+}
+
+export async function saveSelectedGroup(userSession: UserSession, selectedGroup: string | null) {
+    try {
+        await userSession.putFile('selected-group', selectedGroup ? selectedGroup : '', {
+            encrypt: true,
+            sign: true
+        })
+    }
+    catch (error) {
+        console.log(error);
+    }
+}
+
+export async function getGroup(userSession: UserSession, id: string) {
+    let group: Group | null = null;
+    try {
+        let json = await userSession.getFile('group-index', {
+            decrypt: true,
+            verify: true,
+        }) as string;
+        if (json && json.length > 0) {
+            let map = JSON.parse(json) as any;
+            if (map) {
+                group = map[id];
+            }
+        }
+    }
+    catch {
+    }
+    return group;
 }

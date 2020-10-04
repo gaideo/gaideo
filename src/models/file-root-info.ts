@@ -1,4 +1,4 @@
-export interface MediaRootInfo {
+export interface FileRootInfo {
     publicKey: string,
     root: string
 }

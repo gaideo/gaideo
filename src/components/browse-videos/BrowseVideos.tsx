@@ -6,7 +6,8 @@ import "./BrowseVideos.css";
 import MenuItem from '@material-ui/core/MenuItem';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import { useHistory } from 'react-router-dom';
-import { loadBrowseEntryFromCache, deleteVideoEntry, getCacheEntries, getFriends, shareMedia, getSelectedFriends } from '../../utilities/data-utils';
+import { getCacheEntries, getShares, shareMedia, getSelectedShares } from '../../utilities/data-utils';
+import { loadBrowseEntryFromCache, deleteVideoEntry } from '../../utilities/media-utils';
 import ConfirmDialog from '../confirm-dialog/ConfirmDialog';
 import ShareUserDialog from '../share-user-dialog/ShareUserDialog';
 import { MediaEntry, MediaType } from '../../models/media-entry';
@@ -57,7 +58,7 @@ export function BrowseVideos(props: BrowseVideosProps) {
         const refresh = async () => {
             let arr: BrowseEntry[] = [];
             if (db && userSession?.isUserSignedIn()) {
-                let sf = await getSelectedFriends(userSession);
+                let sf = await getSelectedShares(userSession);
                 setSelectedFriends(sf);
                 let cacheResults = await getCacheEntries(userSession, db, MediaType.Video, MAX_MORE, null, sf);
                 if (cacheResults.cacheEntries?.length > 0) {
@@ -187,7 +188,7 @@ export function BrowseVideos(props: BrowseVideosProps) {
             }
         }
         else if (option === 'Share') {
-            let friends = await getFriends(userSession);
+            let friends = await getShares(userSession);
             if (friends) {
                 const users: string[] = []
                 for (let key in friends) {

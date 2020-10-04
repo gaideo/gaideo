@@ -4,7 +4,7 @@ import Hls from "hls.js";
 import "../browse-videos/BrowseVideos.css";
 import { useParams, useHistory, useLocation } from 'react-router-dom';
 import { VideoDescription } from './VideoDescription';
-import { getEncryptedMediaFile } from '../../utilities/data-utils';
+import { getEncryptedFile } from '../../utilities/data-utils';
 import { MediaType } from '../../models/media-entry';
 import { getImageSize } from '../../utilities/image-utils';
 
@@ -65,7 +65,7 @@ export function VideoPlayer(props: VideoPlayerProps) {
         if (owner && owner !== userData.username) {
           userName = owner;
         }
-        let videoKey = await getEncryptedMediaFile(userSession, `videos/${id}/key.bin`, id, MediaType.Video, userName);
+        let videoKey = await getEncryptedFile(userSession, `videos/${id}/key.bin`, id, MediaType.Video, userName);
         if (videoKey) {
           context.current.videoKey = videoKey;
 

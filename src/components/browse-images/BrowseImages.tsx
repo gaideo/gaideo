@@ -3,7 +3,8 @@ import { useConnect } from '@blockstack/connect';
 import { Box, Button } from '@material-ui/core';
 import { BrowseEntry } from '../../models/browse-entry';
 import { useHistory } from 'react-router-dom';
-import { deleteImageEntry, getCacheEntries, getSelectedFriends, loadBrowseEntryFromCache, shareMedia } from '../../utilities/data-utils';
+import { getCacheEntries, getSelectedShares, shareMedia } from '../../utilities/data-utils';
+import { deleteImageEntry, loadBrowseEntryFromCache } from '../../utilities/media-utils';
 import Gallery from 'react-photo-gallery';
 import SelectedImage from './SelectedImage';
 import { Photo } from '../../models/photo';
@@ -78,7 +79,7 @@ export function BrowseImages(props: BrowseImagesProps) {
         const refresh = async () => {
             let arr: Photo[] = [];
             if (db && userSession?.isUserSignedIn()) {
-                let sf = await getSelectedFriends(userSession);
+                let sf = await getSelectedShares(userSession);
                 setSelectedFriends(sf);
                 let cacheResults = await getCacheEntries(userSession, db, MediaType.Images, MAX_MORE, null, sf);
                 if (cacheResults.cacheEntries?.length > 0) {

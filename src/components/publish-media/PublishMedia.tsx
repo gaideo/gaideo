@@ -12,15 +12,17 @@ import { MediaEntry, MediaType } from '../../models/media-entry';
 import { useConnect } from '@blockstack/connect';
 import { trackPromise } from 'react-promise-tracker';
 import { useHistory, useParams } from 'react-router-dom';
-import { createHashAddress, deleteVideoEntry, createPrivateKey, loadBrowseEntry, updateMasterIndex, getPrivateKey } from '../../utilities/data-utils';
+import { createHashAddress, createPrivateKey, updateMasterIndex, getPrivateKey } from '../../utilities/data-utils';
+import { deleteVideoEntry, loadBrowseEntry } from '../../utilities/media-utils';
 import { computeAge, getNow } from '../../utilities/time-utils';
 import { getPublicKeyFromPrivate, makeUUID4, UserSession } from 'blockstack';
 import { BrowseEntry } from '../../models/browse-entry';
 import { Photo } from '../../models/photo';
 import { ImagesLoadedCallback, UpdateProgressCallback, VideosLoadedCallback } from '../../models/callbacks';
 import { readBinaryFile } from '../../utilities/file-utils';
-import { MediaFileEntry, MediaFileOperation } from '../../models/media-file-entry';
+import { MediaFileEntry } from '../../models/media-file-entry';
 import { computeNameFromImageFile, encryptVideo } from '../../utilities/ffmpeg-utils';
+import { FileOperation } from '../../models/file-operation';
 
 interface ParamTypes { id: string; type: string }
 
@@ -527,7 +529,7 @@ export default function PublishVideo(props: PublishVideoProps) {
                 deleteVideoEntry(mediaEntry, userSession, null, props.updateProgressCallback);
             }
             else {
-                await updateMasterIndex(userSession, props.worker, MediaFileOperation.Add, [{ indexFile: fname, mediaEntry: mediaEntry }]);
+                await updateMasterIndex(userSession, props.worker, FileOperation.Add, [{ indexFile: fname, mediaEntry: mediaEntry }]);
             }
         }
     }
@@ -563,7 +565,7 @@ export default function PublishVideo(props: PublishVideoProps) {
                         }
                     }
                     if (mediaEntries.length > 0) {
-                        await updateMasterIndex(userSession, props.worker, MediaFileOperation.Add, mediaEntries);
+                        await updateMasterIndex(userSession, props.worker, FileOperation.Add, mediaEntries);
                     }
                 }
 
@@ -621,7 +623,7 @@ export default function PublishVideo(props: PublishVideoProps) {
                         contentType: 'application/json'
                     })
     
-                    updateMasterIndex(userSession, props.worker, MediaFileOperation.Update, [{ indexFile: indexFile, mediaEntry: be.mediaEntry }]);
+                    updateMasterIndex(userSession, props.worker, FileOperation.Update, [{ indexFile: indexFile, mediaEntry: be.mediaEntry }]);
                     if (mediaType === MediaType.Images) {
                         if (props.photos) {
                             for (let i = 0; i < props.photos?.length; i++) {

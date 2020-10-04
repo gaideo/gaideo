@@ -5,8 +5,8 @@ import CloseIcon from '@material-ui/icons/Close';
 import AsyncSelect from 'react-select/async';
 import makeAnimated from 'react-select/animated';
 import { Icon } from '@material-ui/core';
-import AddFriendDialog from '../add-friend-dialog/AddFriendDialog';
-import { getFriends, getSelectedFriends, updateFriends } from '../../utilities/data-utils';
+import AddFriendDialog from './AddFriendDialog';
+import { getShares, getSelectedShares, updateShares } from '../../utilities/data-utils';
 import { useConnect } from '@blockstack/connect';
 import { trackPromise } from 'react-promise-tracker';
 import ConfirmDialog from '../confirm-dialog/ConfirmDialog';
@@ -40,7 +40,7 @@ export function Friends(props: FriendsProps) {
     useEffect(() => {
         const refresh = async () => {
             if (userSession?.isUserSignedIn()) {
-                let arr = await getSelectedFriends(userSession);
+                let arr = await getSelectedShares(userSession);
                 if (arr && arr.length > 0) {
                     setSelectedFriends(arr.map(x => {
                         return {
@@ -68,8 +68,8 @@ export function Friends(props: FriendsProps) {
 
     const updateFriendListCallback = useCallback(async (friends: string[], deleteFlag: boolean) => {
         if (friends && friends.length > 0 && userSession?.isUserSignedIn()) {
-            await updateFriends(userSession, friends, deleteFlag);
-            let updated = await getFriends(userSession);
+            await updateShares(userSession, friends, deleteFlag);
+            let updated = await getShares(userSession);
             if (updated) {
                 let list: string[] = [];
                 for (let key in updated) {
@@ -96,7 +96,7 @@ export function Friends(props: FriendsProps) {
     }, [userSession, updateFriendListCallback]);
 
     const filterFriends = async (inputValue: string) => {
-        let friends: any = await getFriends(userSession);
+        let friends: any = await getShares(userSession);
         let options: any[] = [];
         for (let key in friends) {
             if (!inputValue || (inputValue.length > 0 && key.startsWith(inputValue))) {

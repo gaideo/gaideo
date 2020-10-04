@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useConnect } from "@blockstack/connect";
 import { useParams } from "react-router-dom";
 import { BrowseEntry } from "../../models/browse-entry";
-import { loadBrowseEntry } from "../../utilities/data-utils";
+import { loadBrowseEntry } from "../../utilities/media-utils";
 import { Typography } from '@material-ui/core';
 import { getNow, getLongDate } from '../../utilities/time-utils';
 
