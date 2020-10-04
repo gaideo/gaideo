@@ -1,7 +1,7 @@
-import { MediaEntry } from "./media-entry";
+import { MediaMetaData } from "./media-meta-data";
 
 export interface BrowseEntry {
-    mediaEntry: MediaEntry;
+    metaData: MediaMetaData;
     previewImage?: string;
     source: string;
     age: string;

@@ -7,7 +7,7 @@ import DialogContent from '@material-ui/core/DialogContent';
 import DialogContentText from '@material-ui/core/DialogContentText';
 import DialogTitle from '@material-ui/core/DialogTitle';
 import { useConnect } from '@blockstack/connect';
-import { getPublicKey } from '../../utilities/data-utils';
+import { getPublicKey } from '../../utilities/gaia-utils';
 import { UserData } from 'blockstack/lib/auth/authApp';
 
 interface SetAddFriendDialogOpenCallback {

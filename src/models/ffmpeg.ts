@@ -1,4 +1,4 @@
-import { MediaEntry } from "./media-entry";
+import { MediaMetaData } from "./media-meta-data";
 
 export enum FFMpegInputType {
     PreviewImage,
@@ -28,7 +28,7 @@ export interface FFMpegInput {
 }
 
 export interface FFMpegEncryptResult {
-    mediaEntry?: MediaEntry;
+    metaData?: MediaMetaData;
     hlsFiles?: FFMpegFile[];
     errorMessage?: string
 }

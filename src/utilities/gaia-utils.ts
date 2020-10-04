@@ -1,13 +1,13 @@
-import { MediaEntry, MediaType } from "../models/media-entry";
 import { getPublicKeyFromPrivate, lookupProfile, makeECPrivateKey, publicKeyToAddress, UserSession } from "blockstack";
 import { IDBPDatabase } from 'idb';
 import { CacheEntry, CacheResults } from "../models/cache-entry";
-import { MediaFileEntry } from "../models/media-file-entry";
 import { UserData } from "blockstack/lib/auth/authApp";
 import { ShareUserEntry } from "../models/share-user-entry";
 import { FileRootInfo } from "../models/file-root-info";
 import { Group } from "../models/group";
 import { FileOperation } from "../models/file-operation";
+import { FileEntry } from "../models/file-entry";
+import { FileMetaData } from "../models/file-meta-data";
 
 
 
@@ -89,7 +89,7 @@ export async function updateMasterIndex(
     userSession: UserSession,
     gaiaWorker: Worker | null,
     operation: FileOperation,
-    fileEntries: MediaFileEntry[],
+    fileEntries: FileEntry[],
     userName: string | undefined = undefined
 ) {
     try {
@@ -120,7 +120,7 @@ export async function updateMasterIndex(
                     let modified = false;
                     const privateLookup: any = {};
                     for (let i = 0; i < fileEntries.length; i++) {
-                        let mediaEntry = fileEntries[i].mediaEntry;
+                        let metaData = fileEntries[i].metaData;
                         if (operation === FileOperation.Delete
                             || operation === FileOperation.Unshare) {
                             if (masterIndex[fileEntries[i].indexFile]) {
@@ -130,7 +130,7 @@ export async function updateMasterIndex(
                         }
                         else {
                             if (operation !== FileOperation.Update || masterIndex[fileEntries[i].indexFile]) {
-                                masterIndex[fileEntries[i].indexFile] = fileEntries[i].mediaEntry.lastUpdatedUTC;
+                                masterIndex[fileEntries[i].indexFile] = fileEntries[i].metaData.lastUpdatedUTC;
                                 modified = true;
                             }
                         }
@@ -138,10 +138,9 @@ export async function updateMasterIndex(
                             || operation === FileOperation.Unshare
                             || operation === FileOperation.Delete)
                             && modified && publicFileName) {
-                            const mt = mediaEntry.mediaType ? MediaType.Images : MediaType.Video;
-                            const sharePrivateKeyFile = getPrivateKeyFileName(fileRootInfo.root, mediaEntry.id, mt);
+                            const sharePrivateKeyFile = getPrivateKeyFileName(fileRootInfo.root, metaData.id, metaData.type);
                             if (operation === FileOperation.Share) {
-                                let privateKey = await getPrivateKey('', userSession, mediaEntry.id, mt);
+                                let privateKey = await getPrivateKey('', userSession, metaData.id, metaData.type);
                                 if (privateKey) {
                                     let encryptedKey = await userSession.encryptContent(privateKey, {
                                         publicKey: fileRootInfo.publicKey
@@ -239,11 +238,11 @@ export async function listFiles(userSession: UserSession) {
     })
 }
 
-export async function shareMedia(mediaEntries: MediaEntry[], userSession: UserSession, shareUsers: ShareUserEntry[]) {
-    const files: MediaFileEntry[] = mediaEntries.map(x => {
+export async function shareFile(mediaEntries: FileMetaData[], userSession: UserSession, shareUsers: ShareUserEntry[]) {
+    const files: FileEntry[] = mediaEntries.map(x => {
         return {
-            mediaEntry: x,
-            indexFile: `${x.mediaType === MediaType.Images ? 'images' : 'videos'}/${x.id}.index`
+            metaData: x,
+            indexFile: `${x.type}/${x.id}.index`
         }
     });
     for (let i = 0; i < shareUsers.length; i++) {
@@ -253,10 +252,26 @@ export async function shareMedia(mediaEntries: MediaEntry[], userSession: UserSe
     }
 }
 
+export function getFileIDFromIndexFileName(fileName: string) {
+    let i = fileName.lastIndexOf('/');
+    if (i >= 0) {
+        return fileName.substring(i + 1).replace('.index', '');
+    }
+    return null;
+}
+
+export function getTypeFromIndexFileName(fileName: string) {
+    let i = fileName.indexOf('/');
+    if (i >= 0) {
+        return fileName.substring(0, i);
+    }
+    return '';
+}
+
 export async function getCacheEntries(
     userSession: UserSession,
     db: IDBPDatabase<unknown>,
-    mediaType: MediaType,
+    type: string,
     max: number | null,
     lastCacheKeys: IDBValidKey[] | null,
     shareNames?: string[] | null | undefined): Promise<CacheResults> {
@@ -278,7 +293,7 @@ export async function getCacheEntries(
     }
     while (cursor) {
         if (cursor.value.data
-            && cursor.value.section === `${publicKey}_${mediaType === MediaType.Images ? 1 : 0}`) {
+            && cursor.value.section === `${publicKey}_${type}`) {
             let canAdd = true;
             let shareName = cursor.value.shareName;
             if (!shareNames && shareName) {
@@ -318,15 +333,8 @@ export async function getCacheEntries(
 export function getPrivateKeyFileName(
     root: string,
     id: string,
-    mediaType: MediaType) {
-    let mediaDir;
-    if (mediaType === MediaType.Images) {
-        mediaDir = 'images/'
-    }
-    else {
-        mediaDir = 'videos/'
-    }
-    let fileName = `${root}${mediaDir}${id}/private.key`;
+    type: string) {
+    let fileName = `${root}${type}/${id}/private.key`;
     return fileName;
 }
 
@@ -334,9 +342,9 @@ export async function getPrivateKey(
     root: string,
     userSession: UserSession,
     id: string,
-    mediaType: MediaType,
+    type: string,
     userName?: string) {
-    let privateKeyFile = getPrivateKeyFileName(root, id, mediaType);
+    let privateKeyFile = getPrivateKeyFileName(root, id, type);
     let privateKey: string | null | undefined;
     try {
         if (userName) {
@@ -365,7 +373,7 @@ export async function getEncryptedFile(
     userSession: UserSession,
     fileName: string,
     id: string,
-    mediaType: MediaType,
+    type: string,
     owner: string | undefined = undefined) {
     let content: string | ArrayBuffer | undefined = undefined;
     let userData = userSession.loadUserData();
@@ -374,7 +382,7 @@ export async function getEncryptedFile(
         userName = owner;
     }
     let mediaRootInfo = await getShareRootInfo(userData, true, userName);
-    let privateKey = await getPrivateKey(mediaRootInfo.root, userSession, id, mediaType, userName);
+    let privateKey = await getPrivateKey(mediaRootInfo.root, userSession, id, type, userName);
     if (privateKey) {
         let encryptedContent = await userSession.getFile(fileName, {
             decrypt: false,
@@ -395,8 +403,8 @@ export async function getEncryptedFile(
 export async function createPrivateKey(
     userSession: UserSession,
     id: string,
-    mediaType: MediaType) {
-    let fileName = getPrivateKeyFileName('', id, mediaType);
+    type: string) {
+    let fileName = getPrivateKeyFileName('', id, type);
     let privateKey = makeECPrivateKey();
     await userSession.putFile(fileName, privateKey, {
         encrypt: true,

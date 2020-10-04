@@ -5,9 +5,9 @@ import React, { useState, useEffect } from "react";
 import { trackPromise } from "react-promise-tracker";
 import { useHistory } from "react-router-dom";
 import { BrowseEntry } from "../../models/browse-entry";
-import { MediaEntry } from "../../models/media-entry";
+import { MediaMetaData } from "../../models/media-meta-data";
 import { Photo } from '../../models/photo';
-import { getShares, shareMedia } from "../../utilities/data-utils";
+import { getShares, shareFile } from "../../utilities/gaia-utils";
 import { deleteImageEntry } from "../../utilities/media-utils";
 import MenuItem from '@material-ui/core/MenuItem';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
@@ -117,7 +117,7 @@ const SelectedImage = (props: SelectedImageProps) => {
   const { userSession } = authOptions;
 
   const [confirmOpen, setConfirmOpen] = React.useState(false);
-  const [menuMediaEntry, setMenuMediaEntry] = React.useState<MediaEntry | null>(null);
+  const [menuMetaData, setMenuMetaData] = React.useState<MediaMetaData | null>(null);
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
   const open = Boolean(anchorEl);
   const history = useHistory();
@@ -125,9 +125,9 @@ const SelectedImage = (props: SelectedImageProps) => {
   const [shareUserOpen, setShareUserOpen] = React.useState(false);
   const [shareUsers, setShareUsers] = React.useState<Array<string>>([]);
 
-  const deleteImage = async (mediaEntry: MediaEntry, userSession: UserSession | undefined) => {
+  const deleteImage = async (metaData: MediaMetaData, userSession: UserSession | undefined) => {
     if (userSession) {
-      await deleteImageEntry(mediaEntry, userSession, props.worker, props.updateProgressCallback);
+      await deleteImageEntry(metaData, userSession, props.worker, props.updateProgressCallback);
     }
   }
 
@@ -138,9 +138,9 @@ const SelectedImage = (props: SelectedImageProps) => {
         props.deleteSelectedCallback();
       }
       else {
-        let mediaEntry: MediaEntry = item as MediaEntry;
-        if (mediaEntry) {
-          trackPromise(deleteImage(mediaEntry, userSession).then(x => {
+        let metaData: MediaMetaData = item as MediaMetaData;
+        if (metaData) {
+          trackPromise(deleteImage(metaData, userSession).then(x => {
             props.deleteCallback(props.photo);
           }))
         }
@@ -148,24 +148,24 @@ const SelectedImage = (props: SelectedImageProps) => {
     }
   }
 
-  const shareUserResult = (item: MediaEntry, result: ShareUserEntry[] | undefined) => {
+  const shareUserResult = (item: MediaMetaData, result: ShareUserEntry[] | undefined) => {
     setShareUserOpen(false);
     if (userSession && result && result.length > 0) {
       if (props.selectable) {
         props.shareSelectedCallback(result);
       }
       else {
-        trackPromise(shareMedia([item], userSession, result));
+        trackPromise(shareFile([item], userSession, result));
       }
     }
   }
 
   const navImage = (browseEntry: BrowseEntry) => {
-    history.push(`/images/show/${browseEntry.mediaEntry.id}`)
+    history.push(`/images/show/${browseEntry.metaData.id}`)
   }
 
-  const handleClick = (event: React.MouseEvent<HTMLElement>, mediaEntry: MediaEntry) => {
-    setMenuMediaEntry(mediaEntry);
+  const handleClick = (event: React.MouseEvent<HTMLElement>, metaData: MediaMetaData) => {
+    setMenuMetaData(metaData);
     setAnchorEl(event.currentTarget);
   };
 
@@ -175,13 +175,13 @@ const SelectedImage = (props: SelectedImageProps) => {
 
   const handleMenu = async (option: string) => {
     if (option === 'Delete') {
-      if (menuMediaEntry) {
+      if (menuMetaData) {
         setConfirmOpen(true);
       }
     }
     else if (option === 'Edit') {
-      if (menuMediaEntry) {
-        history.push(`/publish/${menuMediaEntry.mediaType}/${menuMediaEntry.id}`);
+      if (menuMetaData) {
+        history.push(`/publish/${menuMetaData.type}/${menuMetaData.id}`);
       }
     }
     else if (option.startsWith('Select')) {
@@ -270,8 +270,8 @@ const SelectedImage = (props: SelectedImageProps) => {
         style={{ margin: props.margin, height: photo.height, width: photo.width, ...cont }}
         className={!isSelected ? "not-selected" : ""}
       >
-        <ConfirmDialog open={confirmOpen} item={menuMediaEntry} onResult={deleteConfirmResult} title="Confirm Delete" message={getConfirmMessage(menuMediaEntry?.title)} />
-        <ShareUserDialog open={shareUserOpen} mediaEntry={menuMediaEntry} initialUsers={shareUsers} shareUsersResult={shareUserResult} />
+        <ConfirmDialog open={confirmOpen} item={menuMetaData} onResult={deleteConfirmResult} title="Confirm Delete" message={getConfirmMessage(menuMetaData?.title)} />
+        <ShareUserDialog open={shareUserOpen} metaData={menuMetaData} initialUsers={shareUsers} shareUsersResult={shareUserResult} />
 
         <Checkmark selected={isSelected ? true : false} />
         <img height={100} width={100}
@@ -286,35 +286,37 @@ const SelectedImage = (props: SelectedImageProps) => {
       </div>
       <Toolbar style={{ paddingLeft: 5, justifyContent: 'space-between' }} disableGutters={true}>
         <div onClick={() => { navImage(props.photo.browseEntry) }}>
-          <Typography variant="caption">{`${props.photo.browseEntry.mediaEntry?.title} (${props.photo.browseEntry.age})`}</Typography>
+          <Typography variant="caption">{`${props.photo.browseEntry.metaData?.title} (${props.photo.browseEntry.age})`}</Typography>
         </div>
+        {!props.photo.browseEntry.fromShare &&
         <div>
-          <IconButton
-            style={{ minWidth: 30, outline: 'none', paddingTop: 0, paddingBottom: 0, paddingLeft: 5, paddingRight: 5 }}
-            onClick={(e) => handleClick(e, props.photo.browseEntry.mediaEntry)}
-          >
-            <MoreVertIcon />
-          </IconButton>
-          <Menu
-            id="video-actions"
-            anchorEl={anchorEl}
-            keepMounted
-            open={open}
-            onClose={handleClose}
-            PaperProps={{
-              style: {
-                maxHeight: ITEM_HEIGHT * 4.5,
-                width: '20ch',
-              },
-            }}
-          >
-            {options.map((option) => (
-              <MenuItem key={option} onClick={() => handleMenu(option)}>
-                {getMenuOption(option)}
-              </MenuItem>
-            ))}
-          </Menu>
-        </div>
+        <IconButton
+          style={{ minWidth: 30, outline: 'none', paddingTop: 0, paddingBottom: 0, paddingLeft: 5, paddingRight: 5 }}
+          onClick={(e) => handleClick(e, props.photo.browseEntry.metaData)}
+        >
+          <MoreVertIcon />
+        </IconButton>
+        <Menu
+          id="image-actions"
+          anchorEl={anchorEl}
+          keepMounted
+          open={open}
+          onClose={handleClose}
+          PaperProps={{
+            style: {
+              maxHeight: ITEM_HEIGHT * 4.5,
+              width: '20ch',
+            },
+          }}
+        >
+          {options.map((option) => (
+            <MenuItem key={option} onClick={() => handleMenu(option)}>
+              {getMenuOption(option)}
+            </MenuItem>
+          ))}
+        </Menu>
+      </div>
+      }
       </Toolbar>
     </Box>
   );

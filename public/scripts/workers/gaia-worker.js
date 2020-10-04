@@ -113,30 +113,23 @@ const getUserDirectory = (publicKey) => {
 const getPrivateKeyFileName = (
     publicKey,
     id,
-    mediaType,
+    type,
     userName) => {
     let root = '';
     if (userName) {
         root = getUserDirectory(publicKey);
     }
-    let mediaDir;
-    if (mediaType === 1) {
-        mediaDir = 'images/'
-    }
-    else {
-        mediaDir = 'videos/'
-    }
-    let fileName = `${root}${mediaDir}${id}/private.key`;
+    let fileName = `${root}${type}/${id}/private.key`;
     return fileName;
 }
 
 const getPrivateKey = async (
     userSession,
     id,
-    mediaType,
+    type,
     userName) => {
     let publicKey = blockstack.getPublicKeyFromPrivate(sessionData.userData.appPrivateKey);
-    let privateKeyFile = getPrivateKeyFileName(publicKey, id, mediaType, userName);
+    let privateKeyFile = getPrivateKeyFileName(publicKey, id, type, userName);
     let privateKey;
     try {
         if (userName) {
@@ -177,7 +170,7 @@ const removeCachedIndex = async (indexFile, pk) => {
     return false;
 }
 
-const getMediaIDFromIndexFileName = (fileName) => {
+const getIDFromIndexFileName = (fileName) => {
     let i = fileName?.lastIndexOf('/');
     if (i >= 0) {
         return fileName.substring(i + 1).replace('.index', '');
@@ -185,12 +178,12 @@ const getMediaIDFromIndexFileName = (fileName) => {
     return null;
 }
 
-const getMediaTypeFromIndexFileName = (fileName) => {
-    let ret = 0;
-    if (fileName.startsWith('images/')) {
-        ret = 1;
+const getTypeFromIndexFileName = (fileName) => {
+    let i = fileName.indexOf('/');
+    if (i >= 0) {
+        return fileName.substring(0, i);
     }
-    return ret;
+    return '';
 }
 
 const updateCachedIndex = async (indexFile, pk) => {
@@ -203,21 +196,21 @@ const updateCachedIndex = async (indexFile, pk) => {
     }
     if (ownerPublicKey) {
         let indexID = await createIndexID(ownerPublicKey, indexFile);
-        let id = getMediaIDFromIndexFileName(indexFile);
-        let mediaType = getMediaTypeFromIndexFileName(indexFile);
+        let id = getIDFromIndexFileName(indexFile);
+        let type = getTypeFromIndexFileName(indexFile);
         if (id) {
-            let privateKey = await getPrivateKey(userSession, ownerPublicKey, id, mediaType);
+            let privateKey = await getPrivateKey(userSession, ownerPublicKey, id, type);
             if (privateKey) {
                 let json = await userSession.getFile(indexFile, {
                     decrypt: privateKey
                 });
-                let mediaEntry = JSON.parse(json);
+                let metaData = JSON.parse(json);
                 let encryptedJson = await userSession.encryptContent(json);
                 let cachedIndex = {
                     data: encryptedJson,
                     id: indexID,
-                    section: `${ownerPublicKey}_${mediaEntry.mediaType}`,
-                    lastUpdated: mediaEntry.lastUpdatedUTC
+                    section: `${ownerPublicKey}_${metaData.type}`,
+                    lastUpdated: metaData.lastUpdatedUTC
                 }
                 await db.put('cached-indexes', cachedIndex);
                 return true;
@@ -253,8 +246,8 @@ const saveGaiaIndexesToCache = async (userName) => {
             existingCache = {};
             const index = db.transaction('cached-indexes').store.index('section');
             if (index) {
-                for (let i = 0; i < mediaTypes?.length; i++) {
-                    let cursor = await index.openCursor(`${ownerPublicKey}_${mediaTypes[i]}`);
+                for (let i = 0; i < fileTypes?.length; i++) {
+                    let cursor = await index.openCursor(`${ownerPublicKey}_${fileTypes[i]}`);
                     while (cursor) {
                         let canAdd = true;
                         if (!userName && cursor.value.shareName) {
@@ -282,24 +275,30 @@ const saveGaiaIndexesToCache = async (userName) => {
                     let lastUpdated = masterIndex[indexFile];
                     let lastProcessed = existingCache[indexID];
                     if (!lastProcessed || (lastUpdated && lastUpdated > lastProcessed)) {
-                        let id = getMediaIDFromIndexFileName(indexFile);
+                        let id = getIDFromIndexFileName(indexFile);
                         if (id) {
-                            let mediaType = getMediaTypeFromIndexFileName(indexFile);
-                            let privateKey = await getPrivateKey(userSession, id, mediaType, userName);
+                            let type = getTypeFromIndexFileName(indexFile);
+                            let privateKey = await getPrivateKey(userSession, id, type, userName);
                             let json = await userSession.getFile(indexFile, {
                                 decrypt: privateKey,
                                 username: userName
                             });
-                            let mediaEntry = JSON.parse(json);
-                            if (!latestUpdated || latestUpdated < mediaEntry.lastUpdatedUTC) {
-                                latestUpdated = mediaEntry.lastUpdatedUTC;
+                            let metaData = JSON.parse(json);
+
+                            // old format skip
+                            if (metaData.mediaType !== null && metaData.mediaType !== undefined) {
+                                continue;
+                            }
+
+                            if (!latestUpdated || latestUpdated < metaData.lastUpdatedUTC) {
+                                latestUpdated = metaData.lastUpdatedUTC;
                             }
                             let encryptedJson = await userSession.encryptContent(json);
                             let cachedIndex = {
                                 data: encryptedJson,
                                 id: indexID,
-                                section: `${ownerPublicKey}_${mediaEntry.mediaType}`,
-                                lastUpdated: mediaEntry.lastUpdatedUTC,
+                                section: `${ownerPublicKey}_${metaData.type}`,
+                                lastUpdated: metaData.lastUpdatedUTC,
                                 shareName: userName
                             }
                             await db.put('cached-indexes', cachedIndex);
@@ -307,9 +306,9 @@ const saveGaiaIndexesToCache = async (userName) => {
                         }
                     }
                 }
-                catch (mediaError) {
+                catch (metaDataError) {
                     missing.push(indexFile)
-                    console.log(mediaError);
+                    console.log(metaDataError);
                 }
             }
             if (!userName && missing.length > 0) {
@@ -337,7 +336,7 @@ const saveGaiaIndexesToCache = async (userName) => {
 
 const initializeUserSession = (e) => {
     if (!self.userSession || !self.userSession.isUserSignedIn()) {
-        self.mediaTypes = [0, 1];
+        self.fileTypes = e.data.fileTypes;
         let sessionData = JSON.parse(e.data.sessionData);
         let appConfig = new self.blockstack.AppConfig(['store_write'], e.data.location)
         self.userSession = new self.blockstack.UserSession({

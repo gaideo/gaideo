@@ -3,12 +3,12 @@ import { useConnect } from '@blockstack/connect';
 import { Box, Button } from '@material-ui/core';
 import { BrowseEntry } from '../../models/browse-entry';
 import { useHistory } from 'react-router-dom';
-import { getCacheEntries, getSelectedShares, shareMedia } from '../../utilities/data-utils';
-import { deleteImageEntry, loadBrowseEntryFromCache } from '../../utilities/media-utils';
+import { getCacheEntries, getSelectedShares, shareFile } from '../../utilities/gaia-utils';
+import { deleteImageEntry, ImagesType, loadBrowseEntryFromCache } from '../../utilities/media-utils';
 import Gallery from 'react-photo-gallery';
 import SelectedImage from './SelectedImage';
 import { Photo } from '../../models/photo';
-import { MediaEntry, MediaType } from '../../models/media-entry';
+import { MediaMetaData } from '../../models/media-meta-data';
 import { SlideShow } from './SlideShow';
 import { trackPromise } from 'react-promise-tracker';
 import { IDBPDatabase } from 'idb';
@@ -59,7 +59,7 @@ export function BrowseImages(props: BrowseImagesProps) {
             browseEntry: be,
             width: aspectWidth,
             height: aspectHeight,
-            title: be.mediaEntry.title,
+            title: be.metaData.title,
             src: src,
             selected: false,
             aspectWidth: aspectWidth,
@@ -81,14 +81,14 @@ export function BrowseImages(props: BrowseImagesProps) {
             if (db && userSession?.isUserSignedIn()) {
                 let sf = await getSelectedShares(userSession);
                 setSelectedFriends(sf);
-                let cacheResults = await getCacheEntries(userSession, db, MediaType.Images, MAX_MORE, null, sf);
+                let cacheResults = await getCacheEntries(userSession, db, ImagesType, MAX_MORE, null, sf);
                 if (cacheResults.cacheEntries?.length > 0) {
                     for (let i = 0; i < cacheResults.cacheEntries?.length; i++) {
 
                         let decryptedData = await userSession.decryptContent(cacheResults.cacheEntries[i].data) as string;
                         if (decryptedData) {
-                            let mediaEntry = JSON.parse(decryptedData);
-                            let be = await loadBrowseEntryFromCache(userSession, mediaEntry, true) as BrowseEntry
+                            let metaData = JSON.parse(decryptedData);
+                            let be = await loadBrowseEntryFromCache(userSession, metaData, true) as BrowseEntry
                             if (be) {
                                 let img = new Image();
                                 let src = `data:image/png;base64, ${be.previewImage}`;
@@ -118,13 +118,13 @@ export function BrowseImages(props: BrowseImagesProps) {
             try {
                 setLoadingMore(true)
                 let arr: Photo[] = props.photos;
-                let cacheResults = await getCacheEntries(userSession, props.db, MediaType.Images, MAX_MORE, lastCacheKeys, selectedFriends);
+                let cacheResults = await getCacheEntries(userSession, props.db, ImagesType, MAX_MORE, lastCacheKeys, selectedFriends);
                 if (cacheResults.cacheEntries?.length > 0) {
                     for (let i = 0; i < cacheResults.cacheEntries?.length; i++) {
                         let decryptedData = await userSession.decryptContent(cacheResults.cacheEntries[i].data) as string;
                         if (decryptedData) {
-                            let mediaEntry = JSON.parse(decryptedData);
-                            let be = await loadBrowseEntryFromCache(userSession, mediaEntry, true) as BrowseEntry
+                            let metaData = JSON.parse(decryptedData);
+                            let be = await loadBrowseEntryFromCache(userSession, metaData, true) as BrowseEntry
                             if (be) {
                                 let img = new Image();
                                 let src = `data:image/png;base64, ${be.previewImage}`;
@@ -154,7 +154,7 @@ export function BrowseImages(props: BrowseImagesProps) {
     const selectImageCallback = useCallback((photo: Photo) => {
         let index = -1;
         for (let i = 0; i < props.photos.length; i++) {
-            if (props.photos[i].browseEntry.mediaEntry.id === photo.browseEntry.mediaEntry.id) {
+            if (props.photos[i].browseEntry.metaData.id === photo.browseEntry.metaData.id) {
                 index = i;
                 break;
             }
@@ -175,7 +175,7 @@ export function BrowseImages(props: BrowseImagesProps) {
     const deletePhotoCallback = useCallback((photo: Photo) => {
         let index = -1;
         for (let i = 0; i < props.photos.length; i++) {
-            if (props.photos[i].browseEntry.mediaEntry.id === photo.browseEntry.mediaEntry.id) {
+            if (props.photos[i].browseEntry.metaData.id === photo.browseEntry.metaData.id) {
                 index = i;
                 break;
             }
@@ -200,7 +200,7 @@ export function BrowseImages(props: BrowseImagesProps) {
     }, [isSelectable, props]);
 
     const deleteSelectedCallback = useCallback(() => {
-        const removeSelectedImages = async (arr: MediaEntry[]) => {
+        const removeSelectedImages = async (arr: MediaMetaData[]) => {
             if (userSession) {
                 for (let j = 0; j < arr.length; j++) {
                     await deleteImageEntry(arr[j], userSession, props.worker, props.updateProgressCallback);
@@ -208,10 +208,10 @@ export function BrowseImages(props: BrowseImagesProps) {
             }
             history.go(0);
         }
-        const removeArray: MediaEntry[] = [];
+        const removeArray: MediaMetaData[] = [];
         for (let i = 0; i < props.photos.length; i++) {
             if (props.photos[i].selected) {
-                removeArray.push(props.photos[i].browseEntry.mediaEntry);
+                removeArray.push(props.photos[i].browseEntry.metaData);
             }
         }
         if (removeArray.length > 0) {
@@ -221,14 +221,14 @@ export function BrowseImages(props: BrowseImagesProps) {
 
     const shareSelectedCallback = useCallback((shareUsers: ShareUserEntry[]) => {
         if (userSession?.isUserSignedIn()) {
-            const shareArray: MediaEntry[] = [];
+            const shareArray: MediaMetaData[] = [];
             for (let i = 0; i < props.photos.length; i++) {
                 if (props.photos[i].selected) {
-                    shareArray.push(props.photos[i].browseEntry.mediaEntry);
+                    shareArray.push(props.photos[i].browseEntry.metaData);
                 }
             }
             if (shareArray.length > 0) {
-                trackPromise(shareMedia(shareArray, userSession, shareUsers));
+                trackPromise(shareFile(shareArray, userSession, shareUsers));
             }
         }
     }, [props.photos, userSession]);
@@ -239,7 +239,7 @@ export function BrowseImages(props: BrowseImagesProps) {
 
     const imageRenderer = useCallback(
         ({ index, left, top, key, photo }) => (
-            <Box key={photo.browseEntry.mediaEntry.id}>
+            <Box key={photo.browseEntry.metaData.id}>
                 <SelectedImage
                     direction={"row"}
                     selected={photo.selected}

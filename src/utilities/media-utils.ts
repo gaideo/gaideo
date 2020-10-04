@@ -2,23 +2,27 @@ import { UserSession } from "blockstack";
 import { BrowseEntry } from "../models/browse-entry";
 import { UpdateProgressCallback } from "../models/callbacks";
 import { FileOperation } from "../models/file-operation";
-import { MediaEntry, MediaType } from "../models/media-entry";
-import { updateMasterIndex, getShareRootInfo, getEncryptedFile, getPrivateKey } from "./data-utils";
+import { MediaMetaData } from "../models/media-meta-data";
+import { updateMasterIndex, getShareRootInfo, getEncryptedFile, getPrivateKey, getFileIDFromIndexFileName, getTypeFromIndexFileName } from "./gaia-utils";
 import { base64ArrayBuffer } from "./encoding-utils";
 import { computeAge } from "./time-utils";
 
+export const ImagesType = "images";
+export const VideosType = "videos";
+export const UnencryptedVideosType = "unencryptedvideo";
+
 export async function deleteVideoEntry(
-    mediaEntry: MediaEntry,
+    metaData: MediaMetaData,
     userSession: any,
     gaiaWorker: Worker | null,
     updateProgress: UpdateProgressCallback | undefined = undefined
 ) {
-    if (mediaEntry?.manifest?.length > 0) {
+    if (metaData?.manifest?.length > 0) {
         try {
             let previewFile: string | null = null;
-            for (let i = 0; i < mediaEntry.manifest.length; i++) {
-                let entry = mediaEntry.manifest[i];
-                let fileName = `videos/${mediaEntry.id}/${entry}`;
+            for (let i = 0; i < metaData.manifest.length; i++) {
+                let entry = metaData.manifest[i];
+                let fileName = `videos/${metaData.id}/${entry}`;
                 if (entry.endsWith('_preview.jpg')) {
                     previewFile = fileName;
                     continue;
@@ -44,7 +48,7 @@ export async function deleteVideoEntry(
                 });
             }
             try {
-                let keyFile = `videos/${mediaEntry.id}/private.key`;
+                let keyFile = `videos/${metaData.id}/private.key`;
                 if (updateProgress) {
                     updateProgress(`Deleting video file: ${keyFile}.`, null);
                 }
@@ -52,17 +56,17 @@ export async function deleteVideoEntry(
             }
             catch { }
 
-            let indexUrl: string = `videos/${mediaEntry.id}.index`;
+            let indexUrl: string = `videos/${metaData.id}.index`;
             if (updateProgress) {
                 updateProgress(`Deleting index file: ${indexUrl}.`, null);
             }
             await userSession?.deleteFile(indexUrl, {
                 wasSigned: false
             });
-            await updateMasterIndex(userSession, gaiaWorker, FileOperation.Delete, [{ indexFile: indexUrl, mediaEntry: mediaEntry }], undefined);
+            await updateMasterIndex(userSession, gaiaWorker, FileOperation.Delete, [{ indexFile: indexUrl, metaData: metaData }], undefined);
         }
         catch (ex) {
-            console.log(`Unable to delete video: ${mediaEntry.id}`)
+            console.log(`Unable to delete video: ${metaData.id}`)
             console.log(ex);
         }
     }
@@ -70,14 +74,14 @@ export async function deleteVideoEntry(
 }
 
 export async function deleteImageEntry(
-    mediaEntry: MediaEntry,
+    metaData: MediaMetaData,
     userSession: UserSession,
     gaiaWorker: Worker | null,
     updateProgress: UpdateProgressCallback | undefined = undefined) {
-    if (mediaEntry?.manifest?.length > 0) {
-        for (let i = 0; i < mediaEntry.manifest.length; i++) {
-            const entry = mediaEntry.manifest[i];
-            const fileName = `images/${mediaEntry.id}/${entry}`;
+    if (metaData?.manifest?.length > 0) {
+        for (let i = 0; i < metaData.manifest.length; i++) {
+            const entry = metaData.manifest[i];
+            const fileName = `images/${metaData.id}/${entry}`;
             if (updateProgress) {
                 updateProgress(`Deleting image file: ${fileName}`, null);
             }
@@ -85,7 +89,7 @@ export async function deleteImageEntry(
                 wasSigned: false
             });
             try {
-                let keyFile = `images/${mediaEntry.id}/private.key`;
+                let keyFile = `images/${metaData.id}/private.key`;
                 if (updateProgress) {
                     updateProgress(`Deleting private key: ${keyFile}`, null);
                 }
@@ -96,54 +100,54 @@ export async function deleteImageEntry(
             catch { }
         }
 
-        let indexUrl: string = `images/${mediaEntry.id}.index`;
+        let indexUrl: string = `images/${metaData.id}.index`;
         if (updateProgress) {
             updateProgress(`Deleting index file: ${indexUrl}`, null);
         }
         await userSession?.deleteFile(indexUrl, {
             wasSigned: false
         });
-        await updateMasterIndex(userSession, gaiaWorker, FileOperation.Delete, [{ indexFile: indexUrl, mediaEntry: mediaEntry }], undefined);
+        await updateMasterIndex(userSession, gaiaWorker, FileOperation.Delete, [{ indexFile: indexUrl, metaData: metaData }], undefined);
     }
 
 }
 
-export async function loadBrowseEntryFromCache(userSession: UserSession, mediaEntry: MediaEntry, loadPreviewImage: boolean): Promise<any> {
+export async function loadBrowseEntryFromCache(userSession: UserSession, metaData: MediaMetaData, loadPreviewImage: boolean): Promise<any> {
     let be: BrowseEntry | null = null;
     try {
-        if (mediaEntry) {
+        if (metaData) {
             let source: string = '';
-            if (mediaEntry.mediaType === MediaType.Video) {
-                source = await userSession?.getFileUrl(`videos/${mediaEntry.id}/master.m3u8`, {
-                    username: mediaEntry.userName
+            if (metaData.type === VideosType) {
+                source = await userSession?.getFileUrl(`videos/${metaData.id}/master.m3u8`, {
+                    username: metaData.userName
                 });
             }
-            if (source || mediaEntry.mediaType === MediaType.Images) {
+            if (source || metaData.type === ImagesType) {
 
                 let content: string | ArrayBuffer | undefined;
 
                 if (loadPreviewImage) {
-                    let previewImageName = mediaEntry.previewImageName;
+                    let previewImageName = metaData.previewImageName;
                     if (!previewImageName) {
-                        if (mediaEntry.mediaType === MediaType.Images) {
-                            previewImageName = `images/${mediaEntry.id}/${mediaEntry.manifest[0]}`;
+                        if (metaData.type === ImagesType) {
+                            previewImageName = `images/${metaData.id}/${metaData.manifest[0]}`;
                         }
                         else {
-                            previewImageName = `videos/${mediaEntry.id}/${mediaEntry.id}_preview.jpg`;
+                            previewImageName = `videos/${metaData.id}/${metaData.id}_preview.jpg`;
                         }
                     }
-                    content = await getEncryptedFile(userSession, previewImageName, mediaEntry.id, mediaEntry.mediaType === MediaType.Images ? MediaType.Images : MediaType.Video, mediaEntry.userName);
+                    content = await getEncryptedFile(userSession, previewImageName, metaData.id, metaData.type, metaData.userName);
                 }
                 else {
                     content = undefined;
                 }
                 let userData = userSession.loadUserData();
                 be = {
-                    mediaEntry: mediaEntry,
+                    metaData: metaData,
                     previewImage: '',
                     source: source,
-                    age: computeAge(mediaEntry.lastUpdatedUTC),
-                    fromShare: (mediaEntry.userName && mediaEntry.userName !== userData.username) as boolean
+                    age: computeAge(metaData.lastUpdatedUTC),
+                    fromShare: (metaData.userName && metaData.userName !== userData.username) as boolean
                 };
 
                 let buffer = content as ArrayBuffer;
@@ -162,22 +166,6 @@ export async function loadBrowseEntryFromCache(userSession: UserSession, mediaEn
     return be;
 }
 
-export function getMediaIDFromIndexFileName(fileName: string) {
-    let i = fileName.lastIndexOf('/');
-    if (i >= 0) {
-        return fileName.substring(i + 1).replace('.index', '');
-    }
-    return null;
-}
-
-export function getMediaTypeFromIndexFileName(fileName: string) {
-    let ret = MediaType.Video;
-    if (fileName.startsWith('images/')) {
-        ret = MediaType.Images;
-    }
-    return ret;
-}
-
 export async function loadBrowseEntry(
     userSession: UserSession,
     indexFile: string,
@@ -185,8 +173,8 @@ export async function loadBrowseEntry(
     userName?: string): Promise<any> {
     let be: BrowseEntry | null = null;
     try {
-        let mediaID = getMediaIDFromIndexFileName(indexFile);
-        let mediaType = getMediaTypeFromIndexFileName(indexFile);
+        let mediaID = getFileIDFromIndexFileName(indexFile);
+        let mediaType = getTypeFromIndexFileName(indexFile);
         if (mediaID) {
             let userData = userSession.loadUserData();
             let mediaRootInfo = await getShareRootInfo(userData, true, userName);
@@ -197,8 +185,8 @@ export async function loadBrowseEntry(
                     username: userName
                 });
                 if (content && typeof (content) === "string") {
-                    let mediaEntry = JSON.parse(content);
-                    be = await loadBrowseEntryFromCache(userSession, mediaEntry, loadPreviewImage);
+                    let metaData = JSON.parse(content);
+                    be = await loadBrowseEntryFromCache(userSession, metaData, loadPreviewImage);
                 }
             }
         }

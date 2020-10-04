@@ -6,11 +6,11 @@ import "./BrowseVideos.css";
 import MenuItem from '@material-ui/core/MenuItem';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import { useHistory } from 'react-router-dom';
-import { getCacheEntries, getShares, shareMedia, getSelectedShares } from '../../utilities/data-utils';
-import { loadBrowseEntryFromCache, deleteVideoEntry } from '../../utilities/media-utils';
+import { getCacheEntries, getShares, shareFile, getSelectedShares } from '../../utilities/gaia-utils';
+import { loadBrowseEntryFromCache, deleteVideoEntry, VideosType } from '../../utilities/media-utils';
 import ConfirmDialog from '../confirm-dialog/ConfirmDialog';
 import ShareUserDialog from '../share-user-dialog/ShareUserDialog';
-import { MediaEntry, MediaType } from '../../models/media-entry';
+import { MediaMetaData } from '../../models/media-meta-data';
 import { trackPromise } from 'react-promise-tracker';
 import { IDBPDatabase } from 'idb';
 import { UpdateProgressCallback, VideosLoadedCallback } from '../../models/callbacks';
@@ -41,7 +41,7 @@ export function BrowseVideos(props: BrowseVideosProps) {
     const [confirmOpen, setConfirmOpen] = React.useState(false);
     const [shareUserOpen, setShareUserOpen] = React.useState(false);
     const [shareUsers, setShareUsers] = React.useState<Array<string>>([]);
-    const [menuMediaEntry, setMenuMediaEntry] = React.useState<MediaEntry | null>(null);
+    const [menuMetaData, setMenuMetaData] = React.useState<MediaMetaData | null>(null);
     const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
     const open = Boolean(anchorEl);
     const [loadingMore, setLoadingMore] = React.useState(false);
@@ -56,17 +56,19 @@ export function BrowseVideos(props: BrowseVideosProps) {
 
     useEffect(() => {
         const refresh = async () => {
+            console.log('hello');
+
             let arr: BrowseEntry[] = [];
             if (db && userSession?.isUserSignedIn()) {
                 let sf = await getSelectedShares(userSession);
                 setSelectedFriends(sf);
-                let cacheResults = await getCacheEntries(userSession, db, MediaType.Video, MAX_MORE, null, sf);
+                let cacheResults = await getCacheEntries(userSession, db, VideosType, MAX_MORE, null, sf);
                 if (cacheResults.cacheEntries?.length > 0) {
                     for (let i = 0; i < cacheResults.cacheEntries?.length; i++) {
                         let decryptedData = await userSession.decryptContent(cacheResults.cacheEntries[i].data) as string;
                         if (decryptedData) {
-                            let mediaEntry = JSON.parse(decryptedData);
-                            let be = await loadBrowseEntryFromCache(userSession, mediaEntry, true) as BrowseEntry;
+                            let metaData = JSON.parse(decryptedData);
+                            let be = await loadBrowseEntryFromCache(userSession, metaData, true) as BrowseEntry;
                             if (be) {
                                 let img = new Image();
                                 let src = `data:image/png;base64, ${be.previewImage}`;
@@ -100,13 +102,13 @@ export function BrowseVideos(props: BrowseVideosProps) {
             setLoadingMore(true);
             try {
                 let arr: BrowseEntry[] = props.videos;
-                let cacheResults = await getCacheEntries(userSession, props.db, MediaType.Video, MAX_MORE, lastCacheKeys, selectedFriends);
+                let cacheResults = await getCacheEntries(userSession, props.db, VideosType, MAX_MORE, lastCacheKeys, selectedFriends);
                 if (cacheResults.cacheEntries?.length > 0) {
                     for (let i = 0; i < cacheResults.cacheEntries?.length; i++) {
                         let decryptedData = await userSession.decryptContent(cacheResults.cacheEntries[i].data) as string;
                         if (decryptedData) {
-                            let mediaEntry = JSON.parse(decryptedData);
-                            let be = await loadBrowseEntryFromCache(userSession, mediaEntry, true) as BrowseEntry
+                            let metaData = JSON.parse(decryptedData);
+                            let be = await loadBrowseEntryFromCache(userSession, metaData, true) as BrowseEntry
                             if (be) {
                                 let img = new Image();
                                 let src = `data:image/png;base64, ${be.previewImage}`;
@@ -136,39 +138,39 @@ export function BrowseVideos(props: BrowseVideosProps) {
         }
     }
 
-    const deleteVideo = async (mediaEntry: MediaEntry, userSession: UserSession | undefined) => {
+    const deleteVideo = async (metaData: MediaMetaData, userSession: UserSession | undefined) => {
         if (userSession) {
-            await deleteVideoEntry(mediaEntry, userSession, props.worker, props.updateProgressCallback);
+            await deleteVideoEntry(metaData, userSession, props.worker, props.updateProgressCallback);
         }
     }
 
     const deleteConfirmResult = (item: any, result: boolean) => {
         setConfirmOpen(false);
         if (result) {
-            let mediaEntry: MediaEntry = item as MediaEntry;
-            if (mediaEntry) {
-                trackPromise(deleteVideo(mediaEntry, userSession).then(x => { history.go(0) }))
+            let metaData: MediaMetaData = item as MediaMetaData;
+            if (metaData) {
+                trackPromise(deleteVideo(metaData, userSession).then(x => { history.go(0) }))
             }
         }
     }
 
-    const shareUserResult = (item: MediaEntry, result: ShareUserEntry[] | undefined) => {
+    const shareUserResult = (item: MediaMetaData, result: ShareUserEntry[] | undefined) => {
         setShareUserOpen(false);
         if (userSession && result && result.length > 0) {
-            trackPromise(shareMedia([item], userSession, result));
+            trackPromise(shareFile([item], userSession, result));
         }
     }
 
     const navVideo = (browseEntry: BrowseEntry) => {
         let user = '';
-        if (browseEntry.mediaEntry.userName) {
-            user = `/${browseEntry.mediaEntry.userName}`;
+        if (browseEntry.metaData.userName) {
+            user = `/${browseEntry.metaData.userName}`;
         }
-        history.push(`/videos/show/${browseEntry.mediaEntry.id}${user}?height=${browseEntry.actualHeight}&width=${browseEntry.actualWidth}`)
+        history.push(`/videos/show/${browseEntry.metaData.id}${user}?height=${browseEntry.actualHeight}&width=${browseEntry.actualWidth}`)
     }
 
-    const handleClick = (event: React.MouseEvent<HTMLElement>, mediaEntry: MediaEntry) => {
-        setMenuMediaEntry(mediaEntry);
+    const handleClick = (event: React.MouseEvent<HTMLElement>, metaData: MediaMetaData) => {
+        setMenuMetaData(metaData);
         setAnchorEl(event.currentTarget);
     };
 
@@ -178,13 +180,13 @@ export function BrowseVideos(props: BrowseVideosProps) {
 
     const handleMenu = async (option: string) => {
         if (option === 'Delete') {
-            if (menuMediaEntry) {
+            if (menuMetaData) {
                 setConfirmOpen(true);
             }
         }
         else if (option === 'Edit') {
-            if (menuMediaEntry) {
-                history.push(`/publish/${menuMediaEntry.id}`);
+            if (menuMetaData) {
+                history.push(`/publish/${menuMetaData.id}`);
             }
         }
         else if (option === 'Share') {
@@ -203,11 +205,11 @@ export function BrowseVideos(props: BrowseVideosProps) {
 
     return (
         <Fragment>
-            <ShareUserDialog open={shareUserOpen} mediaEntry={menuMediaEntry} initialUsers={shareUsers} shareUsersResult={shareUserResult} />
-            <ConfirmDialog open={confirmOpen} item={menuMediaEntry} onResult={deleteConfirmResult} title="Confirm Delete" message={`Are you sure you want to delete ${menuMediaEntry?.title}?`} />
+            <ShareUserDialog open={shareUserOpen} metaData={menuMetaData} initialUsers={shareUsers} shareUsersResult={shareUserResult} />
+            <ConfirmDialog open={confirmOpen} item={menuMetaData} onResult={deleteConfirmResult} title="Confirm Delete" message={`Are you sure you want to delete ${menuMetaData?.title}?`} />
             <Toolbar style={{ flexWrap: 'wrap', justifyContent: 'space-around' }}>
                 {props.videos.map(x => (
-                    <div key={x.mediaEntry.id}>
+                    <div key={x.metaData.id}>
                         <div
                             style={{
                                 display: 'flex',
@@ -222,19 +224,19 @@ export function BrowseVideos(props: BrowseVideosProps) {
                                 style={{ marginLeft: 'auto', marginRight: 'auto' }}
                                 width={x.previewImageWidth}
                                 height={x.previewImageHeight}
-                                id={x.mediaEntry.id}
-                                alt={x.mediaEntry.title}
+                                id={x.metaData.id}
+                                alt={x.metaData.title}
                                 src={`data:image/png;base64, ${x.previewImage}`} />
                         </div>
                         <Toolbar style={{ justifyContent: 'space-between' }} disableGutters={true}>
                             <div onClick={() => { navVideo(x) }}>
-                                <Typography variant="caption">{`${x.mediaEntry?.title} (${x.age})`}</Typography>
+                                <Typography variant="caption">{`${x.metaData?.title} (${x.age})`}</Typography>
                             </div>
                             {!x.fromShare &&
                                 <div>
                                     <IconButton
                                         style={{ minWidth: 30, outline: 'none', paddingTop: 0, paddingBottom: 0, paddingLeft: 5, paddingRight: 5 }}
-                                        onClick={(e) => handleClick(e, x.mediaEntry)}
+                                        onClick={(e) => handleClick(e, x.metaData)}
                                     >
                                         <MoreVertIcon />
                                     </IconButton>

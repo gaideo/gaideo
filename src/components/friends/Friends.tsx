@@ -6,7 +6,7 @@ import AsyncSelect from 'react-select/async';
 import makeAnimated from 'react-select/animated';
 import { Icon } from '@material-ui/core';
 import AddFriendDialog from './AddFriendDialog';
-import { getShares, getSelectedShares, updateShares } from '../../utilities/data-utils';
+import { getShares, getSelectedShares, updateShares } from '../../utilities/gaia-utils';
 import { useConnect } from '@blockstack/connect';
 import { trackPromise } from 'react-promise-tracker';
 import ConfirmDialog from '../confirm-dialog/ConfirmDialog';

@@ -27,7 +27,7 @@ import { IDBPDatabase } from 'idb';
 import { Friends } from '../friends/Friends';
 import ProfileDialog from '../profile-dialog/ProfileDialog';
 import ConfirmDialog from '../confirm-dialog/ConfirmDialog';
-import { listFiles, saveSelectedShares, saveSelectedGroup } from '../../utilities/data-utils';
+import { listFiles, saveSelectedShares, saveSelectedGroup } from '../../utilities/gaia-utils';
 import { Playlists } from '../playlists/Playlists';
 
 const drawerWidth = 240;

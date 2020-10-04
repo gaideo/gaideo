@@ -36,13 +36,13 @@ export function VideoDescription() {
     return (
         <div style={{ paddingLeft: 5 }}>
             <div>
-                <Typography variant="h5">{browseEntry?.mediaEntry?.title}</Typography>
+                <Typography variant="h5">{browseEntry?.metaData?.title}</Typography>
             </div>
             <div>
-                <Typography variant="subtitle1">{`${getLongDate(new Date(browseEntry?.mediaEntry.createdDateUTC ? browseEntry.mediaEntry.createdDateUTC : getNow()))}`}</Typography>
+                <Typography variant="subtitle1">{`${getLongDate(new Date(browseEntry?.metaData.createdDateUTC ? browseEntry.metaData.createdDateUTC : getNow()))}`}</Typography>
             </div>
             <div>
-                <Typography variant="subtitle2">{browseEntry?.mediaEntry?.description}</Typography>
+                <Typography variant="subtitle2">{browseEntry?.metaData?.description}</Typography>
             </div>
         </div>
 

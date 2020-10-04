@@ -2,10 +2,11 @@ import { getEntropy } from "blockstack";
 import { createCipher } from "blockstack/lib/encryption/aesCipher";
 import { UpdateProgressCallback } from "../models/callbacks";
 import { FFMpegEncryptResult, FFMpegFile, FFMpegInput, FFMpegInputType, FFMpegVideoDimension } from "../models/ffmpeg";
-import { MediaEntry, MediaType } from "../models/media-entry";
-import { createHashAddress } from "./data-utils";
+import { MediaMetaData } from "../models/media-meta-data";
+import { createHashAddress } from "./gaia-utils";
 import { readBinaryFile } from "./file-utils";
 import { getImageSize } from "./image-utils";
+import { VideosType } from "./media-utils";
 import { sleep } from "./time-utils";
 const { createFFmpeg } = require('@ffmpeg/ffmpeg');
 
@@ -278,11 +279,11 @@ const computePreviewFileName = (videoFileName: string) => {
 }
 
 export async function encryptVideo(
-    inputMediaEntry: MediaEntry,
+    inputMetaData: MediaMetaData,
     file: any,
     isMobile: boolean,
     updateProgress: UpdateProgressCallback): Promise<FFMpegEncryptResult> {
-    let mediaEntry: MediaEntry = { ...inputMediaEntry, previewImageName: undefined };
+    let metaData: MediaMetaData = { ...inputMetaData, previewImageName: undefined };
     let hlsFiles: FFMpegFile[] = [];
 
     let dimWidth: number = 0;
@@ -337,7 +338,7 @@ export async function encryptVideo(
         await ffmpeg.load();
     }
 
-    if (inputMediaEntry.previewImageName) {
+    if (inputMetaData.previewImageName) {
         let keyData = getEntropy(32);
         let ivData = getEntropy(16);
         let ivHexData = ivData.toString('hex');
@@ -391,7 +392,7 @@ export async function encryptVideo(
                 file: file,
                 fileData: data,
                 inputType: FFMpegInputType.PreviewImage,
-                output: computePreviewFileName(inputMediaEntry.previewImageName),
+                output: computePreviewFileName(inputMetaData.previewImageName),
                 dimensions: dimensions,
                 ffmpeg: ffmpeg
             }, handleLogMessage);
@@ -402,8 +403,8 @@ export async function encryptVideo(
                     previewFile = { ...memfs[0], name: `${memfs[0].name}_preview.jpg` }
                 }
                 hlsFiles.push(previewFile);
-                mediaEntry.id = createHashAddress([mediaEntry.id, previewFile.name.replace('_preview.jpg', '')]);
-                mediaEntry.previewImageName = `videos/${mediaEntry.id}/${previewFile.name}`;
+                metaData.id = createHashAddress([metaData.id, previewFile.name.replace('_preview.jpg', '')]);
+                metaData.previewImageName = `videos/${metaData.id}/${previewFile.name}`;
                 if (!dimensions || !dimensions.height || !dimensions.width) {
                     throw Error("Unable to determine size of the input video.")
                 }
@@ -448,10 +449,10 @@ export async function encryptVideo(
                             data: keyData
                         });
 
-                        mediaEntry.manifest = hlsFiles.map(x => x.name);
-                        mediaEntry.mediaType = MediaType.Video;
+                        metaData.manifest = hlsFiles.map(x => x.name);
+                        metaData.type = VideosType;
                         return {
-                            mediaEntry: mediaEntry,
+                            metaData: metaData,
                             hlsFiles: hlsFiles
                         }
 

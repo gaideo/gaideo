@@ -8,19 +8,19 @@ import Button from '@material-ui/core/Button';
 import Typography from '@material-ui/core/Typography';
 import { TextField, FormControl, Box, FormHelperText } from '@material-ui/core';
 import Dropzone from '../dropzone/Dropzone';
-import { MediaEntry, MediaType } from '../../models/media-entry';
+import { MediaMetaData } from '../../models/media-meta-data';
 import { useConnect } from '@blockstack/connect';
 import { trackPromise } from 'react-promise-tracker';
 import { useHistory, useParams } from 'react-router-dom';
-import { createHashAddress, createPrivateKey, updateMasterIndex, getPrivateKey } from '../../utilities/data-utils';
-import { deleteVideoEntry, loadBrowseEntry } from '../../utilities/media-utils';
+import { createHashAddress, createPrivateKey, updateMasterIndex, getPrivateKey } from '../../utilities/gaia-utils';
+import { deleteVideoEntry, ImagesType, loadBrowseEntry, UnencryptedVideosType, VideosType } from '../../utilities/media-utils';
 import { computeAge, getNow } from '../../utilities/time-utils';
 import { getPublicKeyFromPrivate, makeUUID4, UserSession } from 'blockstack';
 import { BrowseEntry } from '../../models/browse-entry';
 import { Photo } from '../../models/photo';
 import { ImagesLoadedCallback, UpdateProgressCallback, VideosLoadedCallback } from '../../models/callbacks';
 import { readBinaryFile } from '../../utilities/file-utils';
-import { MediaFileEntry } from '../../models/media-file-entry';
+import { FileEntry } from '../../models/file-entry';
 import { computeNameFromImageFile, encryptVideo } from '../../utilities/ffmpeg-utils';
 import { FileOperation } from '../../models/file-operation';
 
@@ -53,7 +53,7 @@ interface PublishVideoProps {
 
 export default function PublishVideo(props: PublishVideoProps) {
     const keywordsMessage: string = 'Letters, numbers, special characters # or -';
-    type ValidateUploadResultDelegate = (filesToUpload: any[]) => MediaEntry | string;
+    type ValidateUploadResultDelegate = (filesToUpload: any[]) => MediaMetaData | string;
 
     const classes = useStyles();
     const [activeStep, setActiveStep] = React.useState(0);
@@ -287,7 +287,7 @@ export default function PublishVideo(props: PublishVideoProps) {
                 let nowUTC = getNow();
 
                 if (imageCount === filesToUpload.length) {
-                    const imagesEntry: MediaEntry = {
+                    const imagesEntry: MediaMetaData = {
                         id: id,
                         title: title,
                         description: description,
@@ -297,12 +297,12 @@ export default function PublishVideo(props: PublishVideoProps) {
                         manifest: manifest,
                         createdDateUTC: nowUTC,
                         lastUpdatedUTC: nowUTC,
-                        mediaType: MediaType.Images
+                        type: ImagesType
                     }
                     return imagesEntry;
                 }
                 else if (unencryptedVideoCount === 1) {
-                    const mediaEntry: MediaEntry = {
+                    const metaData: MediaMetaData = {
                         id: id,
                         title: title,
                         description: description,
@@ -312,16 +312,16 @@ export default function PublishVideo(props: PublishVideoProps) {
                         manifest: manifest,
                         createdDateUTC: nowUTC,
                         lastUpdatedUTC: nowUTC,
-                        mediaType: MediaType.UnencryptedVideo,
+                        type: UnencryptedVideosType,
                         previewImageName: computeNameFromImageFile(filesToUpload[0].name)
                     }
-                    return mediaEntry;
+                    return metaData;
                 }
                 else {
                     if (previewImageName && previewImageName.trim().length > 0) {
                         id = createHashAddress([id, previewImageName.replace('_preview.jpg', '')]);
                     }
-                    const mediaEntry: MediaEntry = {
+                    const metaData: MediaMetaData = {
                         id: id,
                         title: title,
                         description: description,
@@ -331,10 +331,10 @@ export default function PublishVideo(props: PublishVideoProps) {
                         manifest: manifest,
                         createdDateUTC: nowUTC,
                         lastUpdatedUTC: nowUTC,
-                        mediaType: MediaType.Video,
+                        type: VideosType,
                         previewImageName: previewImageName ? `videos/${id}/${previewImageName}` : ''
                     }
-                    return mediaEntry;
+                    return metaData;
                 }
             }
         }
@@ -364,9 +364,9 @@ export default function PublishVideo(props: PublishVideoProps) {
         return false;
     }
 
-    const uploadVideo = async (file: any, mediaEntry: MediaEntry, userSession: UserSession, privateKey: string) => {
+    const uploadVideo = async (file: any, metaData: MediaMetaData, userSession: UserSession, privateKey: string) => {
         try {
-            let name: string = `videos/${mediaEntry.id}/${file.name}`;
+            let name: string = `videos/${metaData.id}/${file.name}`;
             if (needEncryptVideoFile(file.name)) {
                 let data;
                 if (file.data) {
@@ -410,16 +410,16 @@ export default function PublishVideo(props: PublishVideoProps) {
         return false;
     }
 
-    const uploadImage = async (file: any, mediaEntry: MediaEntry, userSession: any) => {
-        let ret: MediaFileEntry | null = null;
+    const uploadImage = async (file: any, metaData: MediaMetaData, userSession: any) => {
+        let ret: FileEntry | null = null;
         try {
-            let copy = { ...mediaEntry };
-            copy.id = createHashAddress([mediaEntry.id, file.name]);
+            let copy = { ...metaData };
+            copy.id = createHashAddress([metaData.id, file.name]);
             copy.manifest = [file.name];
-            if (mediaEntry.manifest.length > 1) {
+            if (metaData.manifest.length > 1) {
                 copy.title = `${title} (${file.name})`;
             }
-            let privateKey = await createPrivateKey(userSession, copy.id, MediaType.Images);
+            let privateKey = await createPrivateKey(userSession, copy.id, ImagesType);
             let publicKey = getPublicKeyFromPrivate(privateKey);
             if (privateKey) {
                 let indexFile = `images/${copy.id}.index`;
@@ -448,7 +448,7 @@ export default function PublishVideo(props: PublishVideoProps) {
                     })
 
                     ret = {
-                        mediaEntry: copy,
+                        metaData: copy,
                         indexFile: indexFile
                     };
                 }
@@ -495,14 +495,14 @@ export default function PublishVideo(props: PublishVideoProps) {
         setActiveStep((prevActiveStep) => prevActiveStep + 1);
     }
 
-    const saveVideoFiles = async (userSession: UserSession, mediaEntry: MediaEntry, files: any[]) => {
-        let fname = `videos/${mediaEntry.id}.index`;
+    const saveVideoFiles = async (userSession: UserSession, metaData: MediaMetaData, files: any[]) => {
+        let fname = `videos/${metaData.id}.index`;
 
         props.updateProgressCallback(`Uploading index file...`, null);
-        let privateKey = await createPrivateKey(userSession, mediaEntry.id, MediaType.Video);
+        let privateKey = await createPrivateKey(userSession, metaData.id, VideosType);
         if (privateKey) {
             let publicKey = getPublicKeyFromPrivate(privateKey);
-            let encryptedData = await userSession.encryptContent(JSON.stringify(mediaEntry), {
+            let encryptedData = await userSession.encryptContent(JSON.stringify(metaData), {
                 publicKey: publicKey
             });
             await userSession.putFile(fname, encryptedData, {
@@ -515,9 +515,9 @@ export default function PublishVideo(props: PublishVideoProps) {
             for (let i = 0; i < files.length; i++) {
                 props.updateProgressCallback(`Uploading ${files[i].name} (${i + 1}/${files.length})...`, null);
                 if (files[i].name !== 'keys') {
-                    let success = await uploadVideo(files[i], mediaEntry, userSession, privateKey)
+                    let success = await uploadVideo(files[i], metaData, userSession, privateKey)
                     if (!success) {
-                        success = await uploadVideo(files[i], mediaEntry, userSession, privateKey);
+                        success = await uploadVideo(files[i], metaData, userSession, privateKey);
                     }
                     if (!success) {
                         failed = true;
@@ -526,10 +526,10 @@ export default function PublishVideo(props: PublishVideoProps) {
                 }
             }
             if (failed) {
-                deleteVideoEntry(mediaEntry, userSession, null, props.updateProgressCallback);
+                deleteVideoEntry(metaData, userSession, null, props.updateProgressCallback);
             }
             else {
-                await updateMasterIndex(userSession, props.worker, FileOperation.Add, [{ indexFile: fname, mediaEntry: mediaEntry }]);
+                await updateMasterIndex(userSession, props.worker, FileOperation.Add, [{ indexFile: fname, metaData: metaData }]);
             }
         }
     }
@@ -537,28 +537,28 @@ export default function PublishVideo(props: PublishVideoProps) {
     const doUpload = async (result: any) => {
         setUploadFilesError(false)
         setUploadFilesErrorMessage("");
-        let mediaEntry: MediaEntry = result as MediaEntry;
-        if (userSession && mediaEntry) {
+        let metaData: MediaMetaData = result as MediaMetaData;
+        if (userSession && metaData) {
             setUploading(true);
             try {
-                if (mediaEntry.mediaType === MediaType.UnencryptedVideo) {
-                    let encryptResult = await encryptVideo(mediaEntry, files[0], props.isMobile, props.updateProgressCallback);
-                    if (encryptResult.mediaEntry && encryptResult.hlsFiles) {
-                        await saveVideoFiles(userSession, encryptResult.mediaEntry, encryptResult.hlsFiles);
+                if (metaData.type === UnencryptedVideosType) {
+                    let encryptResult = await encryptVideo(metaData, files[0], props.isMobile, props.updateProgressCallback);
+                    if (encryptResult.metaData && encryptResult.hlsFiles) {
+                        await saveVideoFiles(userSession, encryptResult.metaData, encryptResult.hlsFiles);
                     }
                     else {
                         Promise.reject(encryptResult.errorMessage);
                     }
                 }
-                else if (mediaEntry.mediaType === MediaType.Video) {
-                    await saveVideoFiles(userSession, mediaEntry, files);
+                else if (metaData.type === VideosType) {
+                    await saveVideoFiles(userSession, metaData, files);
                 }
-                else if (mediaEntry.mediaType === MediaType.Images) {
-                    let mediaEntries: MediaFileEntry[] = [];
+                else if (metaData.type === ImagesType) {
+                    let mediaEntries: FileEntry[] = [];
                     for (let i = 0; i < files.length; i++) {
                         props.updateProgressCallback(`Uploading ${files[i].name} (${i + 1}/${files.length})`, null)
                         if (files[i].name !== 'keys') {
-                            let me = await uploadImage(files[i], mediaEntry, userSession);
+                            let me = await uploadImage(files[i], metaData, userSession);
                             if (me) {
                                 mediaEntries.push(me);
                             }
@@ -571,10 +571,10 @@ export default function PublishVideo(props: PublishVideoProps) {
 
                 setSuccessfullUploaded(true);
                 setUploading(false);
-                if (mediaEntry.mediaType === MediaType.Images) {
+                if (metaData.type === ImagesType) {
                     history.push("/images/browse");
                 }
-                else if (mediaEntry.mediaType === MediaType.UnencryptedVideo) {
+                else if (metaData.type === UnencryptedVideosType) {
                     history.push("/videos/browse");
                 }
                 else {
@@ -592,29 +592,24 @@ export default function PublishVideo(props: PublishVideoProps) {
 
     const doUpdate = async () => {
         if (userSession) {
-            let mediaType = MediaType.Video;
-            let indexFile = `videos/${id}.index`;
-            if (type === (MediaType.Images as number).toString()) {
-                mediaType = MediaType.Images;
-                indexFile = `images/${id}.index`
-            }
+            let indexFile = `${type}/${id}.index`;
             let result = await loadBrowseEntry(userSession, indexFile, false);
             let be = result as BrowseEntry;
             if (be) {
-                let privateKey = await getPrivateKey('', userSession, be.mediaEntry.id, be.mediaEntry.mediaType);
+                let privateKey = await getPrivateKey('', userSession, be.metaData.id, be.metaData.type);
                 if (privateKey) {
                     let kwds: string[] | null = null;
                     if (keywords?.length > 0) {
                         kwds = keywords.split(/\s+/g).filter(x => x.trim().length !== 0);
                     }
                     let nowUTC: Date = getNow();
-                    be.mediaEntry.title = title;
-                    be.mediaEntry.description = description;
-                    be.mediaEntry.keywords = kwds;
-                    be.mediaEntry.lastUpdatedUTC = nowUTC;
+                    be.metaData.title = title;
+                    be.metaData.description = description;
+                    be.metaData.keywords = kwds;
+                    be.metaData.lastUpdatedUTC = nowUTC;
 
                     let publicKey = getPublicKeyFromPrivate(privateKey);
-                    let encryptedData = await userSession.encryptContent(JSON.stringify(be.mediaEntry), {
+                    let encryptedData = await userSession.encryptContent(JSON.stringify(be.metaData), {
                         publicKey: publicKey
                     });
                     await userSession.putFile(indexFile, encryptedData, {
@@ -623,15 +618,15 @@ export default function PublishVideo(props: PublishVideoProps) {
                         contentType: 'application/json'
                     })
     
-                    updateMasterIndex(userSession, props.worker, FileOperation.Update, [{ indexFile: indexFile, mediaEntry: be.mediaEntry }]);
-                    if (mediaType === MediaType.Images) {
+                    updateMasterIndex(userSession, props.worker, FileOperation.Update, [{ indexFile: indexFile, metaData: be.metaData }]);
+                    if (type === ImagesType) {
                         if (props.photos) {
                             for (let i = 0; i < props.photos?.length; i++) {
                                 let photo = props.photos[i];
-                                if (photo.browseEntry.mediaEntry.id === be.mediaEntry.id) {
+                                if (photo.browseEntry.metaData.id === be.metaData.id) {
                                     let newPhoto = { ...photo };
-                                    newPhoto.browseEntry.mediaEntry = { ...be.mediaEntry };
-                                    newPhoto.browseEntry.age = computeAge(be.mediaEntry.lastUpdatedUTC);
+                                    newPhoto.browseEntry.metaData = { ...be.metaData };
+                                    newPhoto.browseEntry.age = computeAge(be.metaData.lastUpdatedUTC);
                                     let newPhotos = props.photos.slice();
                                     newPhotos.splice(i, 1);
                                     newPhotos.unshift(newPhoto);
@@ -646,9 +641,9 @@ export default function PublishVideo(props: PublishVideoProps) {
                         if (props.videos) {
                             for (let i = 0; i < props.videos?.length; i++) {
                                 let video = props.videos[i];
-                                if (video.mediaEntry.id === be.mediaEntry.id) {
-                                    let newVideo = { ...video, mediaEntry: be.mediaEntry };
-                                    newVideo.age = computeAge(be.mediaEntry.lastUpdatedUTC);
+                                if (video.metaData.id === be.metaData.id) {
+                                    let newVideo = { ...video, metaData: be.metaData };
+                                    newVideo.age = computeAge(be.metaData.lastUpdatedUTC);
                                     let newVideos = props.videos.slice();
                                     newVideos.splice(i, 1);
                                     newVideos.unshift(newVideo);
@@ -708,18 +703,15 @@ export default function PublishVideo(props: PublishVideoProps) {
         const refresh = async () => {
             let foundExisting: boolean = false;
             if (id && userSession) {
-                let indexFile = `videos/${id}.index`;
-                if (type === (MediaType.Images as number).toString()) {
-                    indexFile = `images/${id}.index`
-                }
+                let indexFile = `${type}/${id}.index`;
                 let result = await loadBrowseEntry(userSession, indexFile, false);
                 let be = result as BrowseEntry;
                 if (be) {
                     foundExisting = true;
-                    setTitle(be.mediaEntry.title);
-                    setDescription(be.mediaEntry.description);
-                    if (be.mediaEntry && be.mediaEntry.keywords && be.mediaEntry.keywords.length > 0) {
-                        setKeywords(be.mediaEntry.keywords.join(' '));
+                    setTitle(be.metaData.title);
+                    setDescription(be.metaData.description);
+                    if (be.metaData && be.metaData.keywords && be.metaData.keywords.length > 0) {
+                        setKeywords(be.metaData.keywords.join(' '));
                     }
                     setSteps(['Enter search info']);
                 }

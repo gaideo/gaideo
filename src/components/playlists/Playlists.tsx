@@ -6,7 +6,7 @@ import CloseIcon from '@material-ui/icons/Close';
 import AsyncSelect from 'react-select/async';
 import makeAnimated from 'react-select/animated';
 import { Icon } from '@material-ui/core';
-import { getGroup, getGroups, getSelectedGroup, updateGroup } from '../../utilities/data-utils';
+import { getGroup, getGroups, getSelectedGroup, updateGroup } from '../../utilities/gaia-utils';
 import { useConnect } from '@blockstack/connect';
 import { trackPromise } from 'react-promise-tracker';
 import ConfirmDialog from '../confirm-dialog/ConfirmDialog';

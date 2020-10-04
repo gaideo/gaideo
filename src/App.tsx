@@ -9,6 +9,7 @@ import Main from './components/main/Main';
 import { createMuiTheme, ThemeOptions, ThemeProvider } from '@material-ui/core';
 import { UserData } from 'blockstack/lib/auth/authApp';
 import { openDB, IDBPDatabase } from 'idb';
+import { ImagesType, VideosType } from './utilities/media-utils';
 
 const userSession = new UserSession({ appConfig });
 
@@ -58,7 +59,10 @@ export default function App() {
             if (sessionData) {
               w.postMessage({
                 message: "load",
-                sessionData: sessionData
+                sessionData: sessionData,
+                location: document.location.href,
+                origin: document.location.origin,
+                fileTypes: [VideosType, ImagesType]
               })
             }
             break;

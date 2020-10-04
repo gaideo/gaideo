@@ -9,7 +9,7 @@ import DialogTitle from '@material-ui/core/DialogTitle';
 import { makeUUID4 } from 'blockstack';
 import { Group } from '../../models/group';
 import { useConnect } from '@blockstack/connect';
-import { getGroup } from '../../utilities/data-utils';
+import { getGroup } from '../../utilities/gaia-utils';
 
 interface SetAddPlaylistDialogOpenCallback {
     (open: boolean, playlist: Group | null, editID: string | undefined): void

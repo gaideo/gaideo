@@ -1,10 +1,5 @@
-export enum MediaType {
-    Video,
-    Images,
-    UnencryptedVideo
-}
 
-export interface MediaEntry {
+export interface FileMetaData {
     id: string;
     title: string;
     description: string;
@@ -14,7 +9,5 @@ export interface MediaEntry {
     keywords?: string[] | null;
     createdDateUTC: Date;
     lastUpdatedUTC: Date;
-    mediaType: MediaType;
-    previewImageName?: string;
-    groups?: string[];
+    type: string;
 }
