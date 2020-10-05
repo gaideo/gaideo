@@ -34,16 +34,21 @@ export default function AddPlaylistDialog(props: AddPlaylistDialogProps) {
 
     useEffect(() => {
         const refresh = async () => {
-            if (userSession?.isUserSignedIn() && props.id) {
-                let group = await getGroup(userSession, props.id);
-                if (group) {
-                    setPlaylistID(group.id);
-                    setPlaylistName(group.name);
+            if (userSession?.isUserSignedIn()) {
+                if (props.id) {
+                    let group = await getGroup(userSession, props.id);
+                    if (group) {
+                        setPlaylistID(group.id);
+                        setPlaylistName(group.name);
+                    }
+                }
+                else {
+                    setPlaylistName('');
                 }
             }
         }
         refresh();
-    }, [userSession, props.id]);
+    }, [userSession, props.id, props.open]);
 
     const handleClose = () => {
         props.setAddPlaylistDialogOpenCallback(false, null, undefined);
@@ -55,7 +60,7 @@ export default function AddPlaylistDialog(props: AddPlaylistDialogProps) {
             id = makeUUID4();
         }
 
-        if (playlistName && playlistName.trim().length > 0) {            
+        if (playlistName && playlistName.trim().length > 0) {
             props.setAddPlaylistDialogOpenCallback(false, {
                 id: id,
                 name: playlistName
@@ -96,7 +101,7 @@ export default function AddPlaylistDialog(props: AddPlaylistDialogProps) {
                         Cancel
                     </Button>
                     <Button onClick={handleAdd} color="primary">
-                        { operation }
+                        {operation}
                     </Button>
                 </DialogActions>
             </Dialog>

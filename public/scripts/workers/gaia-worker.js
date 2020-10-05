@@ -396,7 +396,7 @@ const validateGroupEntries = async (e) => {
                 let found = true;
                 try {
                     await userSession.getFile(x.indexFile, {
-                        encrypt: false,
+                        decrypt: false,
                         verify: false,
                         username: x.userName
                     })

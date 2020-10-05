@@ -39,6 +39,7 @@ export function BrowseVideos(props: BrowseVideosProps) {
     const [shareUsers, setShareUsers] = React.useState<Array<string>>([]);
     const [unshare, setUnshare] = React.useState(false);
     const [menuMetaData, setMenuMetaData] = React.useState<MediaMetaData | null>(null);
+    const [menuFromShare, setMenuFromShare] = React.useState(false);
     const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
     const open = Boolean(anchorEl);
     const [loadingMore, setLoadingMore] = React.useState(false);
@@ -191,8 +192,9 @@ export function BrowseVideos(props: BrowseVideosProps) {
         history.push(`/videos/show/${browseEntry.metaData.id}${user}?height=${browseEntry.actualHeight}&width=${browseEntry.actualWidth}`)
     }
 
-    const handleClick = (event: React.MouseEvent<HTMLElement>, metaData: MediaMetaData) => {
-        setMenuMetaData(metaData);
+    const handleClick = (event: React.MouseEvent<HTMLElement>, metaData: MediaMetaData, fromShare: boolean) => {
+        setMenuMetaData(metaData);        
+        setMenuFromShare(fromShare);
         setAnchorEl(event.currentTarget);
     };
 
@@ -269,7 +271,7 @@ export function BrowseVideos(props: BrowseVideosProps) {
     };
 
     const getOptions = () => {
-        const options: string[] = ['Share', 'Unshare', 'Edit', 'Delete']
+        const options: string[] = menuFromShare ? [] : ['Share', 'Unshare', 'Edit', 'Delete']
 
         if (selectedPlaylist) {
             options.push('Remove from playlist');
@@ -317,35 +319,33 @@ export function BrowseVideos(props: BrowseVideosProps) {
                             <div onClick={() => { navVideo(x) }}>
                                 <Typography variant="caption">{`${x.metaData?.title} (${x.age})`}</Typography>
                             </div>
-                            {!x.fromShare &&
-                                <div>
-                                    <IconButton
-                                        style={{ minWidth: 30, outline: 'none', paddingTop: 0, paddingBottom: 0, paddingLeft: 5, paddingRight: 5 }}
-                                        onClick={(e) => handleClick(e, x.metaData)}
-                                    >
-                                        <MoreVertIcon />
-                                    </IconButton>
-                                    <Menu
-                                        id="video-actions"
-                                        anchorEl={anchorEl}
-                                        keepMounted
-                                        open={open}
-                                        onClose={handleClose}
-                                        PaperProps={{
-                                            style: {
-                                                maxHeight: ITEM_HEIGHT * 4.5,
-                                                width: '20ch',
-                                            },
-                                        }}
-                                    >
-                                        {getOptions().map((option) => (
-                                            <MenuItem key={option} selected={option === 'Edit'} onClick={() => handleMenu(option)}>
-                                                {option}
-                                            </MenuItem>
-                                        ))}
-                                    </Menu>
-                                </div>
-                            }
+                            <div>
+                                <IconButton
+                                    style={{ minWidth: 30, outline: 'none', paddingTop: 0, paddingBottom: 0, paddingLeft: 5, paddingRight: 5 }}
+                                    onClick={(e) => handleClick(e, x.metaData, x.fromShare)}
+                                >
+                                    <MoreVertIcon />
+                                </IconButton>
+                                <Menu
+                                    id="video-actions"
+                                    anchorEl={anchorEl}
+                                    keepMounted
+                                    open={open}
+                                    onClose={handleClose}
+                                    PaperProps={{
+                                        style: {
+                                            maxHeight: ITEM_HEIGHT * 4.5,
+                                            width: '22ch'
+                                        },
+                                    }}
+                                >
+                                    {getOptions().map((option) => (
+                                        <MenuItem key={option} selected={option === 'Edit'} onClick={() => handleMenu(option)}>
+                                            {option}
+                                        </MenuItem>
+                                    ))}
+                                </Menu>
+                            </div>
                         </Toolbar>
                     </div>
                 ))}

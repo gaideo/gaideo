@@ -276,6 +276,9 @@ export function getTypeFromIndexFileName(fileName: string) {
 
 export async function createIndexID(publicKey: string, index: string, userName: string | undefined) {
     let idStr = `${publicKey}_${index}`;
+    if (userName && userName.length > 0) {
+        idStr = `${idStr}_${userName}`;
+    }
     var idBuffer = Buffer.from(new TextEncoder().encode(idStr));
     let id = publicKeyToAddress(idBuffer);
     return id;
@@ -301,7 +304,11 @@ export async function getCacheEntriesFromGroup(
             for (let key in groupIndex) {
                 const currentType = getTypeFromIndexFileName(key);
                 if (currentType === type) {
-                    const id = await createIndexID(publicKey, key, groupIndex[key]);
+                    let uname = groupIndex[key];
+                    if (uname && uname === ud.username) {
+                        uname = undefined;
+                    }
+                    const id = await createIndexID(publicKey, key, uname);
                     const entry = await db.get('cached-indexes', id) as CacheEntry;
                     if (entry) {
                         allEntries.push(entry);
@@ -310,7 +317,7 @@ export async function getCacheEntriesFromGroup(
                         missing.push({
                             groupid: groupid,
                             indexFile: key,
-                            userName: groupIndex[key]
+                            userName: uname
                         });
                     }
                 }

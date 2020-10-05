@@ -319,7 +319,7 @@ const SelectedImage = (props: SelectedImageProps) => {
   }
 
   const getOptions = () => {
-    const options: string[] = ['Share', 'Unshare', 'Edit', 'Delete', 'Select']
+    const options: string[] = props.photo.browseEntry.fromShare ? ['Select'] : ['Share', 'Unshare', 'Edit', 'Delete', 'Select']
 
     if (props.selectedPlaylist) {
       options.push('Remove from playlist');
@@ -356,35 +356,33 @@ const SelectedImage = (props: SelectedImageProps) => {
         <div onClick={() => { navImage(props.photo.browseEntry) }}>
           <Typography variant="caption">{`${props.photo.browseEntry.metaData?.title} (${props.photo.browseEntry.age})`}</Typography>
         </div>
-        {!props.photo.browseEntry.fromShare &&
-          <div>
-            <IconButton
-              style={{ minWidth: 30, outline: 'none', paddingTop: 0, paddingBottom: 0, paddingLeft: 5, paddingRight: 5 }}
-              onClick={(e) => handleClick(e, props.photo.browseEntry.metaData)}
-            >
-              <MoreVertIcon />
-            </IconButton>
-            <Menu
-              id="image-actions"
-              anchorEl={anchorEl}
-              keepMounted
-              open={open}
-              onClose={handleClose}
-              PaperProps={{
-                style: {
-                  maxHeight: ITEM_HEIGHT * 4.5,
-                  width: '20ch',
-                },
-              }}
-            >
-              {getOptions().map((option) => (
-                <MenuItem key={option} onClick={() => handleMenu(option)}>
-                  {getMenuOption(option)}
-                </MenuItem>
-              ))}
-            </Menu>
-          </div>
-        }
+        <div>
+          <IconButton
+            style={{ minWidth: 30, outline: 'none', paddingTop: 0, paddingBottom: 0, paddingLeft: 5, paddingRight: 5 }}
+            onClick={(e) => handleClick(e, props.photo.browseEntry.metaData)}
+          >
+            <MoreVertIcon />
+          </IconButton>
+          <Menu
+            id="image-actions"
+            anchorEl={anchorEl}
+            keepMounted
+            open={open}
+            onClose={handleClose}
+            PaperProps={{
+              style: {
+                maxHeight: ITEM_HEIGHT * 4.5,
+                width: '22ch',
+              },
+            }}
+          >
+            {getOptions().map((option) => (
+              <MenuItem key={option} onClick={() => handleMenu(option)}>
+                {getMenuOption(option)}
+              </MenuItem>
+            ))}
+          </Menu>
+        </div>
       </Toolbar>
     </Box>
   );
