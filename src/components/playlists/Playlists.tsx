@@ -95,7 +95,7 @@ export function Playlists(props: PlaylistsProps) {
 
     const saveSelectedPlaylistCallback = props.saveSelectedPlaylistCallback;
 
-    const updatePlaylistCallback = useCallback(async (playlist: Group, deleteFlag: boolean, id : string | undefined) => {
+    const updatePlaylistCallback = useCallback(async (playlist: Group, deleteFlag: boolean, id: string | undefined) => {
         console.log('update playlist');
         if (userSession?.isUserSignedIn()) {
             await updateGroup(userSession, playlist, deleteFlag);
@@ -149,6 +149,23 @@ export function Playlists(props: PlaylistsProps) {
                 });
             }
         }
+        options.sort((x, y) => {
+            if (!x && y) {
+                return -1;
+            }
+            else if (x && !y) {
+                return 1;
+            }
+            else if (x.label < y.label) {
+                return -1;
+            }
+            else if (x.label > y.label) {
+                return 1;
+            }
+            else {
+                return 0;
+            }
+        })
         return options;
     }
     const promiseOptions = (inputValue: string) =>
@@ -175,10 +192,10 @@ export function Playlists(props: PlaylistsProps) {
     }
 
     return (
-        <div style={{ paddingTop: 5, paddingLeft: !props.isMobile ? 22 : 0 }}>
+        <div style={{ paddingTop: props.show ? 30 : 0, paddingLeft: !props.isMobile ? 22 : 0 }}>
             {props.show &&
                 <Fragment>
-                    <ConfirmDialog open={confirmDeletePlaylistOpen} item={selectedPlaylist} onResult={deleteConfirmResult} title="Confirm Delete" message={`Are you sure you want to delete the selected friends?`} />
+                    <ConfirmDialog open={confirmDeletePlaylistOpen} item={selectedPlaylist} onResult={deleteConfirmResult} title="Confirm Delete" message={`Are you sure you want to delete the selected playlist?`} />
                     <AddPlaylistDialog open={openAdd} id={editID} setAddPlaylistDialogOpenCallback={setAddPlaylistDialogOpenCallback} />
                     <div style={{ display: 'flex', flexDirection: 'row' }}>
                         <div style={{ flex: '1 1 auto' }}>
@@ -186,7 +203,6 @@ export function Playlists(props: PlaylistsProps) {
                                 key={JSON.stringify(playlists)}
                                 value={selectedPlaylist}
                                 placeholder="Choose playlist..."
-                                closeMenuOnSelect={false}
                                 cacheOptions
                                 defaultOptions
                                 isClearable={true}

@@ -13,4 +13,5 @@ export interface CacheResults {
     cacheEntries: CacheEntry[];
     nextKey: IDBValidKey | null;
     nextPrimaryKey: IDBValidKey | null;
+    allEntries?: CacheEntry[];
 }

@@ -61,7 +61,7 @@ export default function ShareUserDialog(props: ShareUserDialogProps) {
             aria-labelledby="share-user-dialog-title"
             open={props.open}
         >
-            <DialogTitle id="share-user-dialog-title">Share Media With Users</DialogTitle>
+            <DialogTitle id="share-user-dialog-title">Share Media</DialogTitle>
             <DialogContent dividers>
                 <div style={{display: 'flex', flexDirection: 'column'}}>
                 {shareEntries.map((option, index) => (

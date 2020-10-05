@@ -7,7 +7,7 @@ import { useHistory } from "react-router-dom";
 import { BrowseEntry } from "../../models/browse-entry";
 import { MediaMetaData } from "../../models/media-meta-data";
 import { Photo } from '../../models/photo';
-import { getShares, shareFile } from "../../utilities/gaia-utils";
+import { addToGroup, getShares, removeFromGroup, shareFile } from "../../utilities/gaia-utils";
 import { deleteImageEntry } from "../../utilities/media-utils";
 import MenuItem from '@material-ui/core/MenuItem';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
@@ -17,6 +17,7 @@ import { UserSession } from "blockstack";
 import { UpdateProgressCallback } from "../../models/callbacks";
 import { ShareUserEntry } from "../../models/share-user-entry";
 import ShareUserDialog from "../share-user-dialog/ShareUserDialog";
+import AddToPlaylistDialog from "../playlists/AddToPlaylistDialog";
 
 interface CheckmarkProps {
   selected: boolean
@@ -24,6 +25,15 @@ interface CheckmarkProps {
 
 const options = [
   'Share',
+  'Add to playlist',
+  'Edit',
+  'Delete',
+  'Select'
+];
+
+const playlistOptions = [
+  'Share',
+  'Remove from playlist',
   'Edit',
   'Delete',
   'Select'
@@ -93,6 +103,14 @@ interface ShareSelectedCallback {
   (shareUsers: ShareUserEntry[]): void
 }
 
+interface AddGroupSelectedCallback {
+  (groupids: string[]): void
+}
+
+interface RemoveSelectedFromGroupCallback {
+  (): void
+}
+
 export interface SelectedImageProps {
   index: number;
   photo: Photo;
@@ -109,7 +127,10 @@ export interface SelectedImageProps {
   deleteSelectedCallback: DeleteSelectedCallback;
   shareSelectedCallback: ShareSelectedCallback;
   updateProgressCallback: UpdateProgressCallback;
-  worker: Worker | null
+  addGroupSelectedCallback: AddGroupSelectedCallback;
+  removeSelectedFromGroupCallback: RemoveSelectedFromGroupCallback;
+  worker: Worker | null,
+  selectedPlaylist: string | null
 }
 
 const SelectedImage = (props: SelectedImageProps) => {
@@ -124,6 +145,7 @@ const SelectedImage = (props: SelectedImageProps) => {
   const [isSelected, setIsSelected] = useState(props.selected);
   const [shareUserOpen, setShareUserOpen] = React.useState(false);
   const [shareUsers, setShareUsers] = React.useState<Array<string>>([]);
+  const [addToPlaylistOpen, setAddToPlaylistOpen] = React.useState(false);
 
   const deleteImage = async (metaData: MediaMetaData, userSession: UserSession | undefined) => {
     if (userSession) {
@@ -156,6 +178,30 @@ const SelectedImage = (props: SelectedImageProps) => {
       }
       else {
         trackPromise(shareFile([item], userSession, result));
+      }
+    }
+  }
+
+  const addToPlaylistResult = (item: MediaMetaData, result: string[] | undefined) => {
+    setAddToPlaylistOpen(false);
+    if (userSession && result && result.length > 0) {
+      if (props.selectable) {
+        props.addGroupSelectedCallback(result);
+      }
+      else {
+        trackPromise(addToGroup([item], userSession, result));
+      }
+    }
+  }
+
+  const removePhotoFromGroup = async () => {
+    if (menuMetaData && userSession?.isUserSignedIn() && props.selectedPlaylist) {
+      if (props.selectable) {
+        props.removeSelectedFromGroupCallback();
+      }
+      else {
+        await removeFromGroup([menuMetaData], userSession, props.selectedPlaylist)
+        props.deleteCallback(props.photo);
       }
     }
   }
@@ -199,6 +245,15 @@ const SelectedImage = (props: SelectedImageProps) => {
           setShareUserOpen(true);
         }
       }
+    }
+    else if (option === 'Add to playlist') {
+      setAddToPlaylistOpen(true);
+    }
+    else if (option === 'Remove from playlist'
+      && menuMetaData
+      && userSession?.isUserSignedIn()
+      && props.selectedPlaylist) {
+        trackPromise(removePhotoFromGroup());
     }
     handleClose();
   };
@@ -264,6 +319,13 @@ const SelectedImage = (props: SelectedImageProps) => {
     return `Are you sure you want to delete ${title}?`
   }
 
+  const getOptions = () => {
+    if (props.selectedPlaylist) {
+      return playlistOptions;
+    }
+    return options;
+  }
+
   return (
     <Box>
       <div
@@ -272,6 +334,7 @@ const SelectedImage = (props: SelectedImageProps) => {
       >
         <ConfirmDialog open={confirmOpen} item={menuMetaData} onResult={deleteConfirmResult} title="Confirm Delete" message={getConfirmMessage(menuMetaData?.title)} />
         <ShareUserDialog open={shareUserOpen} metaData={menuMetaData} initialUsers={shareUsers} shareUsersResult={shareUserResult} />
+        <AddToPlaylistDialog open={addToPlaylistOpen} metaData={menuMetaData} result={addToPlaylistResult} />
 
         <Checkmark selected={isSelected ? true : false} />
         <img height={100} width={100}
@@ -289,34 +352,34 @@ const SelectedImage = (props: SelectedImageProps) => {
           <Typography variant="caption">{`${props.photo.browseEntry.metaData?.title} (${props.photo.browseEntry.age})`}</Typography>
         </div>
         {!props.photo.browseEntry.fromShare &&
-        <div>
-        <IconButton
-          style={{ minWidth: 30, outline: 'none', paddingTop: 0, paddingBottom: 0, paddingLeft: 5, paddingRight: 5 }}
-          onClick={(e) => handleClick(e, props.photo.browseEntry.metaData)}
-        >
-          <MoreVertIcon />
-        </IconButton>
-        <Menu
-          id="image-actions"
-          anchorEl={anchorEl}
-          keepMounted
-          open={open}
-          onClose={handleClose}
-          PaperProps={{
-            style: {
-              maxHeight: ITEM_HEIGHT * 4.5,
-              width: '20ch',
-            },
-          }}
-        >
-          {options.map((option) => (
-            <MenuItem key={option} onClick={() => handleMenu(option)}>
-              {getMenuOption(option)}
-            </MenuItem>
-          ))}
-        </Menu>
-      </div>
-      }
+          <div>
+            <IconButton
+              style={{ minWidth: 30, outline: 'none', paddingTop: 0, paddingBottom: 0, paddingLeft: 5, paddingRight: 5 }}
+              onClick={(e) => handleClick(e, props.photo.browseEntry.metaData)}
+            >
+              <MoreVertIcon />
+            </IconButton>
+            <Menu
+              id="image-actions"
+              anchorEl={anchorEl}
+              keepMounted
+              open={open}
+              onClose={handleClose}
+              PaperProps={{
+                style: {
+                  maxHeight: ITEM_HEIGHT * 4.5,
+                  width: '20ch',
+                },
+              }}
+            >
+              {getOptions().map((option) => (
+                <MenuItem key={option} onClick={() => handleMenu(option)}>
+                  {getMenuOption(option)}
+                </MenuItem>
+              ))}
+            </Menu>
+          </div>
+        }
       </Toolbar>
     </Box>
   );

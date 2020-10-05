@@ -106,6 +106,23 @@ export function Friends(props: FriendsProps) {
                 });
             }
         }
+        options.sort((x, y) => {
+            if (!x && y) {
+                return -1;
+            }
+            else if (x && !y) {
+                return 1;
+            }
+            else if (x.label < y.label) {
+                return -1;
+            }
+            else if (x.label > y.label) {
+                return 1;
+            }
+            else {
+                return 0;
+            }
+        })
         return options;
     }
     const promiseOptions = (inputValue: string) =>
@@ -128,7 +145,7 @@ export function Friends(props: FriendsProps) {
     }
 
     return (
-        <div style={{ paddingTop: 30, paddingLeft: !props.isMobile ? 22 : 0 }}>
+        <div style={{ paddingTop: props.show ? 30 : 0, paddingLeft: !props.isMobile ? 22 : 0 }}>
             {props.show &&
                 <Fragment>
                     <ConfirmDialog open={confirmDeleteFriendOpen} item={selectedFriends} onResult={deleteConfirmResult} title="Confirm Delete" message={`Are you sure you want to delete the selected friends?`} />

@@ -80,8 +80,11 @@ const getMasterIndex = async (root, userName) => {
     return masterIndex;
 }
 
-const createIndexID = async (publicKey, index) => {
+const createIndexID = async (publicKey, index, userName) => {
     let idStr = `${publicKey}_${index}`;
+    if (userName) {
+        idStr = `${idStr}_${userName}`;
+    }
     var idBuffer = new TextEncoder().encode(idStr);
     let id = blockstack.publicKeyToAddress(idBuffer);
     return id;
@@ -270,7 +273,7 @@ const saveGaiaIndexesToCache = async (userName) => {
             missing = [];
             for (let indexFile in masterIndex) {
                 try {
-                    let indexID = await createIndexID(ownerPublicKey, indexFile);
+                    let indexID = await createIndexID(ownerPublicKey, indexFile, userName);
                     existing[indexID] = true;
                     let lastUpdated = masterIndex[indexFile];
                     let lastProcessed = existingCache[indexID];
@@ -364,6 +367,61 @@ const getShares = async () => {
 
     }
     return shares;
+}
+
+const getGroupIndex = async (userSession, id) => {
+    let groupIndex = {}
+    try {
+        let json = await userSession.getFile(`groups/${id}.index`, {
+            decrypt: true,
+            verify: true
+        });
+        if (json) {
+            groupIndex = JSON.parse(json);
+        }
+    }
+    catch {
+
+    }
+    return groupIndex;
+}
+
+const validateGroupEntries = async (e) => {
+    if (e && e.data.groupid && e.data.missing && e.data.missing.length > 0) {
+        let groupIndex = await getGroupIndex(userSession, e.data.groupid);
+        if (groupIndex) {
+            let saveFlag = false;
+            for (let i = 0; i < e.data.missing.length; i++) {
+                let x = e.data.missing[i];
+                let found = true;
+                try {
+                    await userSession.getFile(x.indexFile, {
+                        encrypt: false,
+                        verify: false,
+                        username: x.userName
+                    })
+                }
+                catch {
+                    found = false;
+                }
+                if (!found && groupIndex[x.indexFile]) {
+                    delete groupIndex[x.indexFile];
+                    saveFlag = true;
+                }
+            }
+            if (saveFlag) {
+                try {
+                    await userSession.putFile(`groups/${e.data.groupid}.index`, JSON.stringify(groupIndex), {
+                        encrypt: true,
+                        sign: true
+                    });
+                }
+                catch (error) {
+                    console.log(error);
+                }
+            }
+        }
+    }
 }
 
 self.addEventListener(
@@ -500,6 +558,13 @@ self.addEventListener(
                 });
                 postMessage({
                     message: "deletedbcomplete",
+                    result: true
+                })
+                break;
+            case "validate-group-entries":
+                await validateGroupEntries(e);
+                postMessage({
+                    message: "validate-group-entries-complete",
                     result: true
                 })
                 break;

@@ -567,7 +567,7 @@ export default function Main(props: MainProps) {
                             </Route>
                             <Route path="/videos/browse">
                                 {userSession?.isUserSignedIn() ? (
-                                    <div style={{ paddingTop: 10 }}>
+                                    <div style={{ paddingTop: !showFriends && !showPlaylists ? 30 : 10 }}>
                                         <BrowseVideos
                                             videos={videos}
                                             videosLoadedCallback={videosLoadedCallback}
@@ -582,6 +582,7 @@ export default function Main(props: MainProps) {
                             </Route>
                             <Route path="/images/browse">
                                 {userSession?.isUserSignedIn() ? (
+                                    <div style={{ paddingTop: !showFriends && !showPlaylists ? 25 : 5 }}>
                                     <BrowseImages
                                         photos={photos}
                                         imagesLoadedCallback={imagesLoadedCallback}
@@ -592,6 +593,7 @@ export default function Main(props: MainProps) {
                                         worker={props.worker}
                                         isMobile={isMobile}
                                         updateProgressCallback={updateProgressCallback} />
+                                    </div>
                                 ) : (
                                         <Welcome />
                                     )
