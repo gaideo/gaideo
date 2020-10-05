@@ -1,3 +1,17 @@
+
+export function computeAge(dt: Date | null | undefined) : string {
+    let cd: Date;
+    if (!dt) {
+        cd = getNow();
+    }
+    else {
+        cd = new Date(dt);
+    }
+    let now = getNow();
+    let age = getTimeAge(cd, now);
+    return age;
+}
+
 export function getNow() : Date {
     let now: Date = new Date();
     let nowUTC: Date = new Date(now.toUTCString());
@@ -91,4 +105,8 @@ function getLongMonth(date: Date) {
 
 export function getLongDate(date: Date) {
     return `${date.getDate()} ${getLongMonth(date)} ${date.getFullYear()}`;
+}
+
+export function sleep(ms: number) {
+    return new Promise(resolve => setTimeout(resolve, ms));
 }

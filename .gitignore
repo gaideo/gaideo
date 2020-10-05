@@ -21,5 +21,5 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-public/scripts/blockstack/blockstack.js.map
 debug.log
+public/scripts/blockstack/blockstack.js.map

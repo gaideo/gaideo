@@ -8,6 +8,7 @@ import "./SlideShow.css";
 import { mobileCheck } from '../../utilities/responsive-utils';
 import { useWindowSize } from '../../effects/size-effect';
 import useKeypress from '../../effects/key-press-effect';
+import { getImageSize } from '../../utilities/image-utils';
 
 export function SlideShow(props) {
     const isMobile = mobileCheck();
@@ -22,21 +23,6 @@ export function SlideShow(props) {
         transitionDuration: 300
     }
     const [width, height] = useWindowSize('imageParent');
-
-    const getImageSize = (aspectWidth, aspectHeight) => {
-        let x = height * aspectWidth / aspectHeight;
-        let y = width - x;
-        let nw = width - y;
-        let nh = height;
-        if (nw > width) {
-            nw = width;
-            let a = aspectHeight * nw / aspectWidth;
-            let b = height - a;
-            nh = height - b;
-        }
-
-        return [nw, nh];
-    }
 
     useKeypress('Escape', () => {
         props.closeSlideShowCallback();
@@ -57,7 +43,7 @@ export function SlideShow(props) {
                         <div>
                             <div style={{ height: '95vh', margin: 'auto', display: 'flex', alignItems: 'center' }}>
                                 <div>
-                                    <img width={getImageSize(each.aspectWidth, each.aspectHeight)[0]} height={getImageSize(each.aspectWidth, each.aspectHeight)[1]} alt={each.title} src={each.src} />
+                                    <img width={getImageSize(each.aspectWidth, each.aspectHeight, width, height)[0]} height={getImageSize(each.aspectWidth, each.aspectHeight, width, height)[1]} alt={each.title} src={each.src} />
                                 </div>
                             </div>
                         </div>

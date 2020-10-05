@@ -3,17 +3,18 @@ import { useConnect } from '@blockstack/connect';
 import { Box, Button } from '@material-ui/core';
 import { BrowseEntry } from '../../models/browse-entry';
 import { useHistory } from 'react-router-dom';
-import { deleteImageEntry, loadBrowseEntry } from '../../utilities/data-utils';
+import { addToGroup, getCacheEntries, getCacheEntriesFromGroup, getSelectedGroup, getSelectedShares, removeFromGroup, shareFile } from '../../utilities/gaia-utils';
+import { deleteImageEntry, ImagesType, loadBrowseEntryFromCache } from '../../utilities/media-utils';
 import Gallery from 'react-photo-gallery';
 import SelectedImage from './SelectedImage';
 import { Photo } from '../../models/photo';
-import { MediaEntry, MediaType } from '../../models/media-entry';
+import { MediaMetaData } from '../../models/media-meta-data';
 import { SlideShow } from './SlideShow';
 import { trackPromise } from 'react-promise-tracker';
-
-interface ImagesLoadedCallback {
-    (photos: Photo[]): void
-}
+import { IDBPDatabase } from 'idb';
+import { ImagesLoadedCallback, UpdateProgressCallback } from '../../models/callbacks';
+import { ShareUserEntry } from '../../models/share-user-entry';
+import { CacheResults } from '../../models/cache-entry';
 
 interface ToggleCloseCallback {
     (): void
@@ -25,10 +26,14 @@ interface SetSlideShowIndexCallback {
 
 interface BrowseImagesProps {
     photos: Photo[];
+    db: IDBPDatabase<unknown> | null;
     imagesLoadedCallback: ImagesLoadedCallback;
     toggleCloseCallback: ToggleCloseCallback;
-    slideShowIndex: number | null
+    slideShowIndex: number | null;
     setSlideShowIndexCallback: SetSlideShowIndexCallback;
+    worker: Worker | null;
+    isMobile: boolean;
+    updateProgressCallback: UpdateProgressCallback;
 }
 
 export function BrowseImages(props: BrowseImagesProps) {
@@ -36,90 +41,112 @@ export function BrowseImages(props: BrowseImagesProps) {
     const { userSession } = authOptions;
     const [isSelectable, setIsSelectable] = React.useState(false);
     const [loadingMore, setLoadingMore] = React.useState(false);
+    const [cacheResults, setCacheResults] = React.useState<CacheResults | null>(null);
+    const [selectedFriends, setSelectedFriends] = React.useState<Array<string> | null>(null);
+    const [selectedPlaylist, setSelectedPlaylist] = React.useState<string | null>(null);
     const history = useHistory();
-    const MAX_MORE = 6;
+    const MAX_MORE = 12;
 
-    function gcd(a : number, b: number) : number {
+    function gcd(a: number, b: number): number {
         if (b === 0)
             return a
-        return gcd (b, a % b);
+        return gcd(b, a % b);
     }
 
     const loadPhoto = (be: BrowseEntry, img: HTMLImageElement, src: string) => {
-        var r = gcd (img.width, img.height,);
+        var r = gcd(img.width, img.height,);
+        let aspectWidth = img.width / r;
+        let aspectHeight = img.height / r;
         let photo: Photo = {
             browseEntry: be,
-            width: img.width,
-            height: img.height,
-            title: be.mediaEntry.title,
+            width: aspectWidth,
+            height: aspectHeight,
+            title: be.metaData.title,
             src: src,
             selected: false,
-            aspectWidth: img.width / r,
-            aspectHeight: img.height /r
+            aspectWidth: aspectWidth,
+            aspectHeight: aspectHeight
         }
         return photo;
     }
 
     const loadPhotoCallback = useCallback(loadPhoto, []);
-
+    const db = props.db;
+    const worker = props.worker;
+    const imagesLoadedCallback = props.imagesLoadedCallback;
+    const photos = props.photos;
 
     useEffect(() => {
 
 
         const refresh = async () => {
-            const indexes: string[] = [];
             let arr: Photo[] = [];
-            userSession?.listFiles((name: string) => {
-                if (name.startsWith("images/")
-                    && name.endsWith(".index")) {
-                        if (indexes.length >= MAX_MORE) {
-                            return false;
+            if (db && userSession?.isUserSignedIn()) {
+                let sp = await getSelectedGroup(userSession);
+                let moreCacheResults;
+                if (sp) {
+                    moreCacheResults = await getCacheEntriesFromGroup(userSession, db, ImagesType, worker, sp, MAX_MORE, null);
+                }
+                else {
+                    let sf = await getSelectedShares(userSession);
+                    setSelectedFriends(sf);
+                    moreCacheResults = await getCacheEntries(userSession, db, ImagesType, MAX_MORE, null, sf);
+                }
+                setSelectedPlaylist(sp);
+                setIsSelectable(false);
+                if (moreCacheResults.cacheEntries?.length > 0) {
+                    for (let i = 0; i < moreCacheResults.cacheEntries?.length; i++) {
+
+                        let decryptedData = await userSession.decryptContent(moreCacheResults.cacheEntries[i].data) as string;
+                        if (decryptedData) {
+                            let metaData = JSON.parse(decryptedData);
+                            let be = await loadBrowseEntryFromCache(userSession, metaData, true) as BrowseEntry
+                            if (be) {
+                                let img = new Image();
+                                let src = `data:image/png;base64, ${be.previewImage}`;
+                                img.onload = ev => {
+                                    let photo = loadPhotoCallback(be, img, src);
+                                    arr.push(photo)
+                                    imagesLoadedCallback(arr.slice())
+                                };
+                                img.src = src;
+                            }
                         }
-                        indexes.push(name);
-                    loadBrowseEntry(userSession, name, true, MediaType.Images).then((x: any) => {
-                        let be = x as BrowseEntry;
-                        if (be) {
-                            let img = new Image();
-                            let src = `data:image/png;base64, ${be.previewImage}`;
-                            img.onload = ev => {
-                                let photo = loadPhotoCallback(be, img, src);
-                                arr.push(photo)
-                                props.imagesLoadedCallback(arr.slice())
-                            };
-                            img.src = src;
-                        }
-                    })
-                    if (indexes.length >= MAX_MORE) {
-                        return false;
+                    }
+                    if (moreCacheResults.nextKey && moreCacheResults.nextPrimaryKey) {
+                        setCacheResults(moreCacheResults);
+                    }
+                    else {
+                        setCacheResults(null);
                     }
                 }
-                return true;
-            })
+
+            }
         }
-        if (props.photos.length === 0) {
+        if (photos.length === 0) {
             refresh();
         }
-    }, [userSession, history, props, loadPhotoCallback]);
+    }, [userSession, photos, db, imagesLoadedCallback, loadPhotoCallback, worker]);
 
     const loadMore = async () => {
-        try {
-            setLoadingMore(true)
-            const indexes: string[] = [];
-            let arr: Photo[] = props.photos;
-            await userSession?.listFiles((name: string) => {
-                if (name.startsWith("images/")
-                    && name.endsWith(".index")) {
-                    let found = false;
-                    for (let i = 0; i < props.photos.length; i++) {
-                        let indexFile = `images/${props.photos[i].browseEntry.mediaEntry.id}.index`;
-                        if (indexFile === name) {
-                            found = true;
-                        }
-                    }
-                    if (!found) {
-                        indexes.push(name);
-                        loadBrowseEntry(userSession, name, true, MediaType.Images).then((x: any) => {
-                            let be = x as BrowseEntry;
+        if (userSession && props.db && cacheResults && cacheResults.nextKey && cacheResults.nextPrimaryKey) {
+
+            try {
+                setLoadingMore(true)
+                let arr: Photo[] = props.photos;
+                let moreCacheResults;
+                if (selectedPlaylist) {
+                    moreCacheResults = await getCacheEntriesFromGroup(userSession, props.db, ImagesType, props.worker, selectedPlaylist, MAX_MORE, cacheResults);
+                }
+                else {
+                    moreCacheResults = await getCacheEntries(userSession, props.db, ImagesType, MAX_MORE, cacheResults, selectedFriends);
+                }
+                if (moreCacheResults.cacheEntries?.length > 0) {
+                    for (let i = 0; i < moreCacheResults.cacheEntries?.length; i++) {
+                        let decryptedData = await userSession.decryptContent(moreCacheResults.cacheEntries[i].data) as string;
+                        if (decryptedData) {
+                            let metaData = JSON.parse(decryptedData);
+                            let be = await loadBrowseEntryFromCache(userSession, metaData, true) as BrowseEntry
                             if (be) {
                                 let img = new Image();
                                 let src = `data:image/png;base64, ${be.previewImage}`;
@@ -129,25 +156,27 @@ export function BrowseImages(props: BrowseImagesProps) {
                                     props.imagesLoadedCallback(arr.slice())
                                 };
                                 img.src = src;
-                                }
-                        })
-                    }
-                    if (indexes.length >= MAX_MORE) {
-                        return false;
+                            }
+                        }
                     }
                 }
-                return true;
-            })
-        }
-        finally {
-            setLoadingMore(false);
+                if (moreCacheResults.nextKey && moreCacheResults.nextPrimaryKey) {
+                    setCacheResults(moreCacheResults);
+                }
+                else {
+                    setCacheResults(null);
+                }
+            }
+            finally {
+                setLoadingMore(false);
+            }
         }
     }
 
     const selectImageCallback = useCallback((photo: Photo) => {
         let index = -1;
         for (let i = 0; i < props.photos.length; i++) {
-            if (props.photos[i].browseEntry.mediaEntry.id === photo.browseEntry.mediaEntry.id) {
+            if (props.photos[i].browseEntry.metaData.id === photo.browseEntry.metaData.id) {
                 index = i;
                 break;
             }
@@ -168,7 +197,7 @@ export function BrowseImages(props: BrowseImagesProps) {
     const deletePhotoCallback = useCallback((photo: Photo) => {
         let index = -1;
         for (let i = 0; i < props.photos.length; i++) {
-            if (props.photos[i].browseEntry.mediaEntry.id === photo.browseEntry.mediaEntry.id) {
+            if (props.photos[i].browseEntry.metaData.id === photo.browseEntry.metaData.id) {
                 index = i;
                 break;
             }
@@ -193,30 +222,85 @@ export function BrowseImages(props: BrowseImagesProps) {
     }, [isSelectable, props]);
 
     const deleteSelectedCallback = useCallback(() => {
-        const removeSelectedImages = async (arr: MediaEntry[]) => {
-            for (let j = 0; j < arr.length; j++) {
-                await deleteImageEntry(arr[j], userSession);
+        const removeSelectedImages = async (arr: MediaMetaData[]) => {
+            if (userSession) {
+                for (let j = 0; j < arr.length; j++) {
+                    await deleteImageEntry(arr[j], userSession, props.worker, props.updateProgressCallback);
+                }
             }
             history.go(0);
         }
-        const removeArray: MediaEntry[] = [];
+        const removeArray: MediaMetaData[] = [];
         for (let i = 0; i < props.photos.length; i++) {
             if (props.photos[i].selected) {
-                removeArray.push(props.photos[i].browseEntry.mediaEntry);
+                removeArray.push(props.photos[i].browseEntry.metaData);
             }
         }
         if (removeArray.length > 0) {
             trackPromise(removeSelectedImages(removeArray));
         }
-    }, [history, props.photos, userSession]);
+    }, [history, props.photos, userSession, props.worker, props.updateProgressCallback]);
+
+    const shareSelectedCallback = useCallback((shareUsers: ShareUserEntry[], unshare: boolean) => {
+        if (userSession?.isUserSignedIn()) {
+            const shareArray: MediaMetaData[] = [];
+            for (let i = 0; i < props.photos.length; i++) {
+                if (props.photos[i].selected) {
+                    shareArray.push(props.photos[i].browseEntry.metaData);
+                }
+            }
+            if (shareArray.length > 0) {
+                trackPromise(shareFile(shareArray, userSession, shareUsers, unshare));
+            }
+        }
+    }, [props.photos, userSession]);
+
+    const addGroupSelectedCallback = useCallback((groupids: string[]) => {
+        if (userSession?.isUserSignedIn()) {
+            const fileArray: MediaMetaData[] = [];
+            for (let i = 0; i < props.photos.length; i++) {
+                if (props.photos[i].selected) {
+                    fileArray.push(props.photos[i].browseEntry.metaData);
+                }
+            }
+            if (fileArray.length > 0) {
+                trackPromise(addToGroup(fileArray, userSession, groupids));
+            }
+        }
+    }, [props.photos, userSession]);
 
     const closeSlideShowCallback = useCallback(() => {
         props.setSlideShowIndexCallback(null);
     }, [props]);
 
+    const removeSelectedFromGroupCallback = useCallback(() => {
+        const removePhotoFromGroup = async () => {
+            const fileArray: MediaMetaData[] = [];
+            let newArray: Photo[] = [];
+            for (let i = 0; i < props.photos.length; i++) {
+                if (props.photos[i].selected) {
+                    fileArray.push(props.photos[i].browseEntry.metaData);
+                }
+                else {
+                    newArray.push(props.photos[i]);
+                }
+            }
+            if (fileArray.length > 0
+                && selectedPlaylist
+                && userSession?.isUserSignedIn()) {
+        
+                await removeFromGroup(fileArray, userSession, selectedPlaylist);
+                imagesLoadedCallback(newArray);
+                setIsSelectable(false);
+            }
+    
+        }
+        trackPromise(removePhotoFromGroup());
+    }, [props.photos, imagesLoadedCallback, selectedPlaylist, userSession]);
+
     const imageRenderer = useCallback(
         ({ index, left, top, key, photo }) => (
-            <Box key={photo.browseEntry.mediaEntry.id}>
+            <Box key={photo.browseEntry.metaData.id}>
                 <SelectedImage
                     direction={"row"}
                     selected={photo.selected}
@@ -227,16 +311,33 @@ export function BrowseImages(props: BrowseImagesProps) {
                     left={left}
                     top={top}
                     selectable={isSelectable}
+                    totalCount={props.photos.length}
                     deleteCallback={deletePhotoCallback}
                     selectImageCallback={selectImageCallback}
                     toggleSelectionCallback={toggleSelectionCallback}
                     deleteSelectedCallback={deleteSelectedCallback}
+                    shareSelectedCallback={shareSelectedCallback}
+                    worker={props.worker}
+                    updateProgressCallback={props.updateProgressCallback}
+                    addGroupSelectedCallback={addGroupSelectedCallback}
+                    selectedPlaylist={selectedPlaylist}
+                    removeSelectedFromGroupCallback={removeSelectedFromGroupCallback}
                 />
             </Box>
         ),
-        [deletePhotoCallback, selectImageCallback, toggleSelectionCallback, isSelectable, deleteSelectedCallback]
+        [deletePhotoCallback, selectImageCallback, toggleSelectionCallback,
+            isSelectable, deleteSelectedCallback, props.photos.length,
+            props.worker, props.updateProgressCallback, shareSelectedCallback,
+            selectedPlaylist, addGroupSelectedCallback, removeSelectedFromGroupCallback]
 
     );
+
+    const canLoadMore = () => {
+        if (props.photos.length >= MAX_MORE && cacheResults) {
+            return true;
+        }
+        return false;
+    }
 
     return (
         <Fragment>
@@ -247,9 +348,9 @@ export function BrowseImages(props: BrowseImagesProps) {
                     closeSlideShowCallback={closeSlideShowCallback}
                 />
             ) : (
-                    <div>
-                        <Gallery photos={props.photos} renderImage={imageRenderer} />
-                        {props.photos.length >= MAX_MORE &&
+                    <div style={{ paddingLeft: !props.isMobile ? 22 : 0 }}>
+                        <Gallery photos={props.photos} direction={"row"} renderImage={imageRenderer} />
+                        {canLoadMore() &&
                             <div style={{ display: 'flex', justifyContent: 'center' }}>
                                 <Button disabled={loadingMore} onClick={loadMore}>Show More</Button>
                             </div>

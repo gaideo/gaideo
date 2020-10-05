@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { makeStyles, Divider, List, ListItem, ListItemText, AppBar, Toolbar, Drawer, Typography, Hidden, IconButton, Button, Menu, MenuItem, CircularProgress, Backdrop } from "@material-ui/core";
+import React, { useState, useEffect, useCallback, Fragment } from 'react';
+import { makeStyles, Divider, List, ListItem, ListItemText, AppBar, Toolbar, Drawer, Typography, Hidden, IconButton, Button, Menu, MenuItem, CircularProgress, Backdrop, Icon, LinearProgress, withStyles, Theme, createStyles } from "@material-ui/core";
 import MenuIcon from '@material-ui/icons/MenuOutlined';
 import PublishIcon from '@material-ui/icons/PublishOutlined';
 import MovieIcon from '@material-ui/icons/MovieOutlined';
@@ -11,9 +11,8 @@ import { UserData } from 'blockstack/lib/auth/authApp';
 import AccountCircle from '@material-ui/icons/AccountCircle';
 import CloseIcon from '@material-ui/icons/CloseOutlined';
 import { useHistory, Route, Switch, Redirect, useRouteMatch } from 'react-router-dom';
-import { usePromiseTracker } from 'react-promise-tracker';
+import { trackPromise, usePromiseTracker } from 'react-promise-tracker';
 import { VideoPlayer } from '../video-player/VideoPlayer';
-import { BrowseVideos } from '../browse-videos/BrowseVideos';
 import PublishVideo from '../publish-media/PublishMedia';
 import { VideoEncryption } from '../video-encryption/VideoEncryption';
 import { ContactUs } from '../contact-us/ContactUs';
@@ -23,6 +22,13 @@ import { BrowseEntry } from '../../models/browse-entry';
 import { Welcome } from '../welcome/Welcome';
 import { HideOnScroll } from '../hide-on-scroll/HideOnScroll';
 import { mobileCheck } from '../../utilities/responsive-utils';
+import { BrowseVideos } from '../browse-videos/BrowseVideos';
+import { IDBPDatabase } from 'idb';
+import { Friends } from '../friends/Friends';
+import ProfileDialog from '../profile-dialog/ProfileDialog';
+import ConfirmDialog from '../confirm-dialog/ConfirmDialog';
+import { listFiles, saveSelectedShares, saveSelectedGroup } from '../../utilities/gaia-utils';
+import { Playlists } from '../playlists/Playlists';
 
 const drawerWidth = 240;
 
@@ -30,9 +36,15 @@ interface SetUserDataCallback {
     (userData: UserData | null): void
 }
 
+interface SetSelectedFriendsCallback {
+    (selectedFriends: Array<any> | undefined | null): void
+}
+
 interface MainProps {
-    userData: UserData | null
-    setUserDataCallback: SetUserDataCallback
+    userData: UserData | null;
+    setUserDataCallback: SetUserDataCallback;
+    db: IDBPDatabase<unknown> | null;
+    worker: Worker | null;
 }
 
 export default function Main(props: MainProps) {
@@ -43,6 +55,11 @@ export default function Main(props: MainProps) {
     const welcomeRoute = useRouteMatch("/welcome");
     const browseImagesRoute = useRouteMatch("/images/browse");
     const [slideShowIndex, setSlideShowIndex] = useState<number | null>(null);
+    const [progressMessage, setProgressMessage] = useState<string | null>(null);
+    const [progressSubMessage, setProgressSubMessage] = useState<string | null>(null);
+    const [profileOpen, setProfileOpen] = useState(false);
+    const [confirmResetCacheOpen, setConfirmResetCacheOpen] = React.useState(false);
+    const [confirmDeleteAllOpen, setConfirmDeleteAllOpen] = React.useState(false);
 
     const useStyles = makeStyles((theme) => ({
         drawer: {
@@ -94,6 +111,8 @@ export default function Main(props: MainProps) {
     const [photos, setPhotos] = useState(new Array<Photo>());
     const [videos, setVideos] = useState(new Array<BrowseEntry>());
     const [showClose, setShowClose] = useState(false);
+    const [showFriends, setShowFriends] = useState(false);
+    const [showPlaylists, setShowPlaylists] = useState(false);
 
     if (!publishSelected && isPublish) {
         setPublishSelected(true);
@@ -127,9 +146,9 @@ export default function Main(props: MainProps) {
     }
 
     useEffect(() => {
+        const refresh = async () => {
 
-        const refresh = () => {
-                if (userSession?.isSignInPending()) {
+            if (userSession?.isSignInPending()) {
                 let index = window.location.href.indexOf("authResponse=");
                 if (index >= 0) {
                     let authResponse = window.location.href.substring(index + "authResponse=".length);
@@ -141,7 +160,6 @@ export default function Main(props: MainProps) {
                     });
                 }
             }
-
         }
         refresh();
     }, [userSession, props.userData, history]);
@@ -164,6 +182,28 @@ export default function Main(props: MainProps) {
             userSession?.signUserOut();
             window.location.href = '/';
         }
+        else if (option === 'friends') {
+            setShowFriends(true);
+            setShowPlaylists(false);
+        }
+        else if (option === 'playlists') {
+            setShowPlaylists(true);
+            setShowFriends(false);
+        }
+        else if (option === 'profile') {
+            setProfileOpen(true);
+        }
+        else if (option === 'resetcache') {
+            setConfirmResetCacheOpen(true)
+        }
+        else if (option === 'deleteall') {
+            setConfirmDeleteAllOpen(true)
+        }
+        else if (option === 'listfiles') {
+            if (userSession) {
+                listFiles(userSession);
+            }
+        }
         handleClose();
     };
 
@@ -173,6 +213,7 @@ export default function Main(props: MainProps) {
         setEncryptSelected(name === "Encrypt Videos");
         setContactUsSelected(name === "Contact Us");
         setVideosSelected(name === "Videos")
+
         if (name === "Publish") {
             path = '/publish';
         }
@@ -215,6 +256,91 @@ export default function Main(props: MainProps) {
         }
     }, []);
 
+    const showFriendsCallback = useCallback((show: boolean) => {
+        setShowFriends(show);
+    }, []);
+
+    const showPlaylistsCallback = useCallback((show: boolean) => {
+        setShowPlaylists(show);
+    }, []);
+
+    const updateProgressCallback = useCallback((message: string | null, subMessage: string | null) => {
+        setProgressMessage(message);
+        setProgressSubMessage(subMessage);
+    }, []);
+
+    const setProfileDialogOpenCallback = useCallback((open: boolean) => {
+        setProfileOpen(open);
+    }, []);
+
+    const saveSelectedFriendsCallback = useCallback(async (selected: Array<any> | undefined | null) => {
+        let arr: string[] = [];
+        if (selected) {
+            for (let i = 0; i < selected.length; i++) {
+                arr.push(selected[i].value);
+            }
+        }
+        if (userSession?.isUserSignedIn()) {
+            await saveSelectedShares(userSession, arr);
+        }
+        setVideos(new Array<BrowseEntry>());
+        setPhotos(new Array<Photo>());
+    }, [userSession]);
+
+    const saveSelectedPlaylistCallback = useCallback(async (selected: string | null) => {
+        if (userSession?.isUserSignedIn()) {
+            await saveSelectedGroup(userSession, selected);
+        }
+        setVideos(new Array<BrowseEntry>());
+        setPhotos(new Array<Photo>());
+    }, [userSession]);
+
+    const resetCachedIndexes = async () => {
+        try {
+            await props.db?.close();
+            props.worker?.postMessage({
+                message: 'deletedb',
+            });
+        }
+        catch (error) {
+            console.log(error);
+        }
+    }
+
+    const deleteAll = async () => {
+
+        let deleteme: string[] = [];
+        try {
+            await userSession?.listFiles((name: string) => {
+                deleteme.push(name);
+                return true;
+            });
+            for (let i = 0; i < deleteme.length; i++) {
+                setProgressMessage(`Deleting ${deleteme[i]} (${i + 1}/${deleteme.length})`);
+                await userSession?.deleteFile(deleteme[i])
+            }
+
+        }
+        catch (error) {
+            console.log(`Unable to delete all data: ${error}.`);
+        }
+        await resetCachedIndexes();
+    }
+
+    const resetCacheConfirmResult = (item: any, result: boolean) => {
+        setConfirmResetCacheOpen(false);
+        if (result) {
+            trackPromise(resetCachedIndexes());
+        }
+    }
+
+    const deleteAllConfirmResult = (item: any, result: boolean) => {
+        setConfirmDeleteAllOpen(false);
+        if (result) {
+            trackPromise(deleteAll());
+        }
+    }
+
     const drawer = (
         <div>
             <div>
@@ -250,22 +376,63 @@ export default function Main(props: MainProps) {
 
     const isMobile = mobileCheck();
 
+    const BorderLinearProgress = withStyles((theme: Theme) =>
+        createStyles({
+            root: {
+                height: 10,
+                borderRadius: 5,
+            },
+            bar: {
+                borderRadius: 5,
+            },
+        }),
+    )(LinearProgress);
+
     const appBar = (
-        <AppBar style={{visibility: browseImagesRoute && slideShowIndex != null ? 'hidden' : undefined, backgroundColor: '#d4e3ea', color: 'rgba(0,0,0,.87)' }} position='fixed'>
+        <AppBar style={{ visibility: browseImagesRoute && slideShowIndex != null ? 'hidden' : undefined, backgroundColor: '#d4e3ea', color: 'rgba(0,0,0,.87)' }} position='fixed'>
             {
                 promiseInProgress &&
                 <Backdrop className={classes.backdrop} open={promiseInProgress}>
-                    <CircularProgress color="inherit" />
+                    {progressMessage ? (
+                        <div style={{
+                            backgroundColor: 'gray',
+                            borderRadius: 16,
+                            padding: 20,
+                            border: progressMessage && progressMessage?.length > 0 ? '1px solid' : undefined,
+                            borderColor: 'white',
+                            maxWidth: 800,
+                            wordWrap: 'break-word'
+                        }}>
+
+                            <div>
+                                <Typography variant="h6">{progressMessage}</Typography>
+                            </div>
+
+                            <div>
+                                <Typography variant="h6">{progressSubMessage}</Typography>
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 10 }}>
+                                <div style={{ width: '100%' }}>
+                                    <BorderLinearProgress />
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                            <CircularProgress color="inherit" />
+                        )
+                    }
                 </Backdrop>
             }
 
-            <Toolbar style={{whiteSpace: 'nowrap', justifyContent: 'space-between', height: 40, minHeight: 40 }}>
+            <Toolbar disableGutters={true} style={{ whiteSpace: 'nowrap', justifyContent: 'space-between', height: 40, minHeight: 40 }}>
                 <Hidden mdUp implementation="css">
                     <IconButton
                         color="inherit"
                         aria-label="open drawer"
-                        edge='start'
+                        edge={'start'}
                         onClick={handleSmallDevice}
+                        style={{ paddingTop: 0, paddingBottom: 0, paddingLeft: 20, minWidth: 40 }}
                     >  <MenuIcon />
                     </IconButton>
                     {userSession?.isUserSignedIn() &&
@@ -280,8 +447,9 @@ export default function Main(props: MainProps) {
                             {drawer}
                         </Drawer>
                     }
+
                     <Typography component="span" variant="h6" className={classes.title}>
-                        Welcome to Gaideo
+                        Gaideo
                 </Typography>
                 </Hidden>
                 <Hidden smDown implementation="css">
@@ -296,9 +464,23 @@ export default function Main(props: MainProps) {
                             {drawer}
                         </Drawer>
                     }
-                    <Typography variant="h6" className={classes.title} style={{ paddingLeft: userSession?.isUserSignedIn() ? 250 : 0 }}>
-                        Welcome to Gaideo, a secure way to internet
-                </Typography>
+                    <div style={{ display: 'flex', flexDirection: 'row', paddingLeft: userSession?.isUserSignedIn() ? 180 : 0 }}>
+                        <div>
+                            <Icon>
+                                {isVideos ? <MovieIcon />
+                                    : isImages ? <CameraEnhanceOutlinedIcon />
+                                        : isPublish ? <PublishIcon />
+                                            : isEncrypt ? <EncryptIcon />
+                                                : isContactUs ? <ContactIcon />
+                                                    : <div></div>}
+                            </Icon>
+                        </div>
+                        <div style={{ marginBottom: 0, marginTop: -2, paddingLeft: 5 }}>
+                            <Typography variant="h6" className={classes.title}>
+                                Gaideo
+                          </Typography>
+                        </div>
+                    </div>
                 </Hidden>
                 {
                     userSession?.isUserSignedIn() ?
@@ -307,6 +489,7 @@ export default function Main(props: MainProps) {
                                 <IconButton
                                     onClick={handleClick}
                                     color="inherit"
+                                    style={{ paddingTop: 0, paddingBottom: 0, paddingLeft: 10, paddingRight: 10, minWidth: 40 }}
                                 >
                                     {showClose && browseImagesRoute ? (
                                         <CloseIcon />
@@ -331,6 +514,11 @@ export default function Main(props: MainProps) {
                                     onClose={handleClose}
                                 >
                                     <MenuItem onClick={() => { handleMenu("profile") }}>Profile</MenuItem>
+                                    <MenuItem onClick={() => { handleMenu("friends") }}>Friends</MenuItem>
+                                    <MenuItem onClick={() => { handleMenu("playlists") }}>Playlists</MenuItem>
+                                    <MenuItem onClick={() => { handleMenu("resetcache") }}>Reset Cache</MenuItem>
+                                    <MenuItem onClick={() => { handleMenu("deleteall") }}>Delete All Data</MenuItem>
+                                    <MenuItem onClick={() => { handleMenu("listfiles") }}>List Files</MenuItem>
                                     <MenuItem onClick={() => { handleMenu("logout") }}>Logout</MenuItem>
                                 </Menu>
                             </div>
@@ -352,96 +540,130 @@ export default function Main(props: MainProps) {
     )
 
     return (
-        <div style={{ backgroundImage: userSession?.isUserSignedIn() ? 'none' : 'url(/welcome.jpg)' }}>
-            {isMobile ? (
-                <HideOnScroll>
-                    {appBar}
-                </HideOnScroll>
-            ) : appBar}
-            <div className={classes.content} style={{ marginLeft: welcomeRoute ? 0 : undefined }}>
-                <div style={{ paddingTop: browseImagesRoute && slideShowIndex != null ? 0 : 18, paddingLeft: 0, paddingRight: 0 }}>
-                    <Switch>
-                        <Route path="/videos/show/:id">
-                            {userSession?.isUserSignedIn() ? (
-                                <VideoPlayer />
-                            ) : (
-                                    <Welcome />
-                                )
-                            }
-                        </Route>
-                        <Route path="/videos/browse">
-                            {userSession?.isUserSignedIn() ? (
-                                <div style={{ paddingTop: 30 }}>
-                                    <BrowseVideos videos={videos} videosLoadedCallback={videosLoadedCallback} />
-                                </div>
-                            ) : (
-                                    <Welcome />
-                                )
-                            }
-                        </Route>
-                        <Route path="/images/browse">
-                            {userSession?.isUserSignedIn() ? (
-                                <BrowseImages
-                                    photos={photos}
-                                    imagesLoadedCallback={imagesLoadedCallback}
-                                    toggleCloseCallback={toggleCloseCallback}
-                                    slideShowIndex={slideShowIndex}
-                                    setSlideShowIndexCallback={setSlideShowIndexCallback} />
-                            ) : (
-                                    <Welcome />
-                                )
-                            }
-                        </Route>
-                        <Route path="/publish/:id">
-                            {userSession?.isUserSignedIn() ? (
-                                <PublishVideo />
-                            ) : (
-                                    <Welcome />
-                                )
-                            }
-                        </Route>
-                        <Route path="/publish">
-                            {userSession?.isUserSignedIn() ? (
-                                <PublishVideo />
-                            ) : (
-                                    <Welcome />
-                                )
-                            }
-                        </Route>
-                        <Route path="/encrypt">
-                            {userSession?.isUserSignedIn() ? (
-                                <div style={{ paddingTop: 50, paddingLeft: 24 }}>
-                                    <VideoEncryption />
-                                </div>
-                            ) : (
-                                    <Welcome />
-                                )
-                            }
-                        </Route>
-                        <Route path="/contactus">
-                            {userSession?.isUserSignedIn() ? (
-                                <div style={{ paddingTop: 50, paddingLeft: 24 }}>
-                                    <ContactUs />
-                                </div>
-                            ) : (
-                                    <Welcome />
-                                )
-                            }
-                        </Route>
-                        <Route path="/">
-                            {userSession?.isUserSignedIn() ? (
-                                <Redirect to="/videos/browse" />
-                            ) : (
-                                    <Welcome />
-                                )
-                            }
-                        </Route>
-                        <Route path="/welcome">
-                            <Welcome />
-                        </Route>
-                    </Switch>
+        <Fragment>
+            <ConfirmDialog open={confirmResetCacheOpen} item={null} onResult={resetCacheConfirmResult} title="Confirm Reset Cache" message={`Are you sure you want to reset your cached indexes?`} />
+            <ConfirmDialog open={confirmDeleteAllOpen} item={null} onResult={deleteAllConfirmResult} title="Confirm Delete All" message={`Are you sure you want to delete all of your Gaideo data?`} />
+            <div style={{ backgroundImage: userSession?.isUserSignedIn() ? 'none' : 'url(/welcome.jpg)' }}>
+                {isMobile ? (
+                    <HideOnScroll>
+                        {appBar}
+                    </HideOnScroll>
+                ) : appBar}
+                <ProfileDialog userName={props.userData?.username} open={profileOpen} setProfileDialogOpenCallback={setProfileDialogOpenCallback} />
+                <div className={classes.content} style={{ marginLeft: welcomeRoute ? 0 : undefined }}>
+
+                    <div style={{ paddingTop: browseImagesRoute && slideShowIndex != null ? 0 : 18, paddingLeft: 0, paddingRight: 0 }}>
+                        <Friends show={showFriends} showCallback={showFriendsCallback} isMobile={isMobile} saveSelectedFriendsCallback={saveSelectedFriendsCallback} />
+                        <Playlists show={showPlaylists} showCallback={showPlaylistsCallback} isMobile={isMobile} saveSelectedPlaylistCallback={saveSelectedPlaylistCallback} />
+
+                        <Switch>
+                            <Route path="/videos/show/:id/:owner">
+                                {userSession?.isUserSignedIn() ? (
+                                    <VideoPlayer isMobile={isMobile} />
+                                ) : (
+                                        <Welcome />
+                                    )
+                                }
+                            </Route>
+                            <Route path="/videos/browse">
+                                {userSession?.isUserSignedIn() ? (
+                                    <div style={{ paddingTop: !showFriends && !showPlaylists ? 30 : 10 }}>
+                                        <BrowseVideos
+                                            videos={videos}
+                                            videosLoadedCallback={videosLoadedCallback}
+                                            db={props.db}
+                                            worker={props.worker}
+                                            updateProgressCallback={updateProgressCallback} />
+                                    </div>
+                                ) : (
+                                        <Welcome />
+                                    )
+                                }
+                            </Route>
+                            <Route path="/images/browse">
+                                {userSession?.isUserSignedIn() ? (
+                                    <div style={{ paddingTop: !showFriends && !showPlaylists ? 25 : 5 }}>
+                                    <BrowseImages
+                                        photos={photos}
+                                        imagesLoadedCallback={imagesLoadedCallback}
+                                        toggleCloseCallback={toggleCloseCallback}
+                                        slideShowIndex={slideShowIndex}
+                                        setSlideShowIndexCallback={setSlideShowIndexCallback}
+                                        db={props.db}
+                                        worker={props.worker}
+                                        isMobile={isMobile}
+                                        updateProgressCallback={updateProgressCallback} />
+                                    </div>
+                                ) : (
+                                        <Welcome />
+                                    )
+                                }
+                            </Route>
+                            <Route path="/publish/:type/:id">
+                                {userSession?.isUserSignedIn() ? (
+                                    <PublishVideo
+                                        worker={props.worker}
+                                        videos={videos}
+                                        videosLoadedCallback={videosLoadedCallback}
+                                        photos={photos}
+                                        imagesLoadedCallback={imagesLoadedCallback}
+                                        isMobile={isMobile}
+                                        updateProgressCallback={updateProgressCallback} />
+                                ) : (
+                                        <Welcome />
+                                    )
+                                }
+                            </Route>
+                            <Route path="/publish">
+                                {userSession?.isUserSignedIn() ? (
+                                    <PublishVideo
+                                        worker={props.worker}
+                                        videos={videos}
+                                        videosLoadedCallback={videosLoadedCallback}
+                                        photos={photos}
+                                        imagesLoadedCallback={imagesLoadedCallback}
+                                        isMobile={isMobile}
+                                        updateProgressCallback={updateProgressCallback} />
+                                ) : (
+                                        <Welcome />
+                                    )
+                                }
+                            </Route>
+                            <Route path="/encrypt">
+                                {userSession?.isUserSignedIn() ? (
+                                    <div style={{ paddingTop: 50, paddingLeft: !isMobile ? 22 : 0 }}>
+                                        <VideoEncryption />
+                                    </div>
+                                ) : (
+                                        <Welcome />
+                                    )
+                                }
+                            </Route>
+                            <Route path="/contactus">
+                                {userSession?.isUserSignedIn() ? (
+                                    <div style={{ paddingTop: 50, paddingLeft: !isMobile ? 22 : 0 }}>
+                                        <ContactUs />
+                                    </div>
+                                ) : (
+                                        <Welcome />
+                                    )
+                                }
+                            </Route>
+                            <Route path="/">
+                                {userSession?.isUserSignedIn() ? (
+                                    <Redirect to="/videos/browse" />
+                                ) : (
+                                        <Welcome />
+                                    )
+                                }
+                            </Route>
+                            <Route path="/welcome">
+                                <Welcome />
+                            </Route>
+                        </Switch>
+                    </div>
                 </div>
             </div>
-        </div>
+        </Fragment>
     );
 }

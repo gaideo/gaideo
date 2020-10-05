@@ -5,25 +5,25 @@ import React, { useState, useEffect } from "react";
 import { trackPromise } from "react-promise-tracker";
 import { useHistory } from "react-router-dom";
 import { BrowseEntry } from "../../models/browse-entry";
-import { MediaEntry } from "../../models/media-entry";
+import { MediaMetaData } from "../../models/media-meta-data";
 import { Photo } from '../../models/photo';
-import { deleteImageEntry } from "../../utilities/data-utils";
+import { addToGroup, getShares, isFileShared, removeFromGroup, shareFile } from "../../utilities/gaia-utils";
+import { deleteImageEntry } from "../../utilities/media-utils";
 import MenuItem from '@material-ui/core/MenuItem';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import ConfirmDialog from "../confirm-dialog/ConfirmDialog";
+import { getImageSize } from "../../utilities/image-utils";
+import { UserSession } from "blockstack";
+import { UpdateProgressCallback } from "../../models/callbacks";
+import { ShareUserEntry } from "../../models/share-user-entry";
+import ShareUserDialog from "../share-user-dialog/ShareUserDialog";
+import AddToPlaylistDialog from "../playlists/AddToPlaylistDialog";
 
 interface CheckmarkProps {
   selected: boolean
 }
 
-const options = [
-  'Share',
-  'Edit',
-  'Delete',
-  'Select'
-];
-
-const ITEM_HEIGHT = 48;
+const ITEM_HEIGHT = 54;
 
 const Checkmark = (props: CheckmarkProps) => {
   return (
@@ -83,19 +83,38 @@ interface DeleteSelectedCallback {
   (): void
 }
 
+interface ShareSelectedCallback {
+  (shareUsers: ShareUserEntry[], unshare: boolean): void
+}
+
+interface AddGroupSelectedCallback {
+  (groupids: string[]): void
+}
+
+interface RemoveSelectedFromGroupCallback {
+  (): void
+}
+
 export interface SelectedImageProps {
-  index: number,
-  photo: Photo,
-  margin: string,
-  direction: string,
-  top: string,
-  left: string,
-  selected: boolean,
-  selectable: boolean,
-  deleteCallback: DeletePhotoCallback,
-  selectImageCallback: SelectImageCallback,
-  toggleSelectionCallback: ToggleSelectionCallback
-  deleteSelectedCallback: DeleteSelectedCallback
+  index: number;
+  photo: Photo;
+  margin: string;
+  direction: string;
+  top: string;
+  left: string;
+  selected: boolean;
+  selectable: boolean;
+  totalCount: number;
+  deleteCallback: DeletePhotoCallback;
+  selectImageCallback: SelectImageCallback;
+  toggleSelectionCallback: ToggleSelectionCallback;
+  deleteSelectedCallback: DeleteSelectedCallback;
+  shareSelectedCallback: ShareSelectedCallback;
+  updateProgressCallback: UpdateProgressCallback;
+  addGroupSelectedCallback: AddGroupSelectedCallback;
+  removeSelectedFromGroupCallback: RemoveSelectedFromGroupCallback;
+  worker: Worker | null,
+  selectedPlaylist: string | null
 }
 
 const SelectedImage = (props: SelectedImageProps) => {
@@ -103,11 +122,21 @@ const SelectedImage = (props: SelectedImageProps) => {
   const { userSession } = authOptions;
 
   const [confirmOpen, setConfirmOpen] = React.useState(false);
-  const [menuMediaEntry, setMenuMediaEntry] = React.useState<MediaEntry | null>(null);
+  const [menuMetaData, setMenuMetaData] = React.useState<MediaMetaData | null>(null);
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
   const open = Boolean(anchorEl);
   const history = useHistory();
   const [isSelected, setIsSelected] = useState(props.selected);
+  const [shareUserOpen, setShareUserOpen] = React.useState(false);
+  const [shareUsers, setShareUsers] = React.useState<Array<string>>([]);
+  const [unshare, setUnshare] = React.useState(false);
+  const [addToPlaylistOpen, setAddToPlaylistOpen] = React.useState(false);
+
+  const deleteImage = async (metaData: MediaMetaData, userSession: UserSession | undefined) => {
+    if (userSession) {
+      await deleteImageEntry(metaData, userSession, props.worker, props.updateProgressCallback);
+    }
+  }
 
   const deleteConfirmResult = (item: any, result: boolean) => {
     setConfirmOpen(false);
@@ -116,9 +145,9 @@ const SelectedImage = (props: SelectedImageProps) => {
         props.deleteSelectedCallback();
       }
       else {
-        let mediaEntry: MediaEntry = item as MediaEntry;
-        if (mediaEntry) {
-          trackPromise(deleteImageEntry(mediaEntry, userSession).then(x => {
+        let metaData: MediaMetaData = item as MediaMetaData;
+        if (metaData) {
+          trackPromise(deleteImage(metaData, userSession).then(x => {
             props.deleteCallback(props.photo);
           }))
         }
@@ -126,12 +155,48 @@ const SelectedImage = (props: SelectedImageProps) => {
     }
   }
 
-  const navImage = (browseEntry: BrowseEntry) => {
-    history.push(`/images/show/${browseEntry.mediaEntry.id}`)
+  const shareUserResult = (item: MediaMetaData, unshare: boolean, result: ShareUserEntry[] | undefined) => {
+    setShareUserOpen(false);
+    if (userSession && result && result.length > 0) {
+      if (props.selectable) {
+        props.shareSelectedCallback(result, unshare);
+      }
+      else {
+        trackPromise(shareFile([item], userSession, result, unshare));
+      }
+    }
   }
 
-  const handleClick = (event: React.MouseEvent<HTMLElement>, mediaEntry: MediaEntry) => {
-    setMenuMediaEntry(mediaEntry);
+  const addToPlaylistResult = (item: MediaMetaData, result: string[] | undefined) => {
+    setAddToPlaylistOpen(false);
+    if (userSession && result && result.length > 0) {
+      if (props.selectable) {
+        props.addGroupSelectedCallback(result);
+      }
+      else {
+        trackPromise(addToGroup([item], userSession, result));
+      }
+    }
+  }
+
+  const removePhotoFromGroup = async () => {
+    if (menuMetaData && userSession?.isUserSignedIn() && props.selectedPlaylist) {
+      if (props.selectable) {
+        props.removeSelectedFromGroupCallback();
+      }
+      else {
+        await removeFromGroup([menuMetaData], userSession, props.selectedPlaylist)
+        props.deleteCallback(props.photo);
+      }
+    }
+  }
+
+  const navImage = (browseEntry: BrowseEntry) => {
+    history.push(`/images/show/${browseEntry.metaData.id}`)
+  }
+
+  const handleClick = (event: React.MouseEvent<HTMLElement>, metaData: MediaMetaData) => {
+    setMenuMetaData(metaData);
     setAnchorEl(event.currentTarget);
   };
 
@@ -139,19 +204,55 @@ const SelectedImage = (props: SelectedImageProps) => {
     setAnchorEl(null);
   }
 
-  const handleMenu = (option: string) => {
+  const handleShare = async (isUnshare: boolean) => {
+    if (userSession?.isUserSignedIn()) {
+      let friends = await getShares(userSession);
+      if (friends) {
+        const users: string[] = []
+        for (let key in friends) {
+          let canAdd = true;
+          if (!props.selectable && isUnshare) {
+            const isShared = await isFileShared(userSession, key, props.photo.browseEntry.metaData);
+            if (!isShared) {
+              canAdd = false;
+            }
+          }
+          if (canAdd) {
+            users.push(key);
+          }
+        }
+        setUnshare(isUnshare)
+        setShareUsers(users);
+        setShareUserOpen(true);
+      }
+    }
+  }
+
+  const handleMenu = async (option: string) => {
     if (option === 'Delete') {
-      if (menuMediaEntry) {
+      if (menuMetaData) {
         setConfirmOpen(true);
       }
     }
     else if (option === 'Edit') {
-      if (menuMediaEntry) {
-        history.push(`/publish/${menuMediaEntry.id}`);
+      if (menuMetaData) {
+        history.push(`/publish/${menuMetaData.type}/${menuMetaData.id}`);
       }
     }
     else if (option.startsWith('Select')) {
       props.toggleSelectionCallback();
+    }
+    else if (option === 'Share' || option === 'Unshare') {
+      trackPromise(handleShare(option === 'Unshare'));
+    }
+    else if (option === 'Add to playlist') {
+      setAddToPlaylistOpen(true);
+    }
+    else if (option === 'Remove from playlist'
+      && menuMetaData
+      && userSession?.isUserSignedIn()
+      && props.selectedPlaylist) {
+      trackPromise(removePhotoFromGroup());
     }
     handleClose();
   };
@@ -175,6 +276,15 @@ const SelectedImage = (props: SelectedImageProps) => {
   };
 
   function createPhoto(photo: Photo): any {
+    if (props.totalCount === 1) {
+      let size = getImageSize(photo.width, photo.height, 1024, 768);
+      return {
+        src: photo.src,
+        title: photo.title,
+        height: size[1],
+        width: size[0]
+      }
+    }
     return {
       src: photo.src,
       title: photo.title,
@@ -199,38 +309,62 @@ const SelectedImage = (props: SelectedImageProps) => {
     return option
   }
 
+  const photo = createPhoto(props.photo);
+
+  const getConfirmMessage = (title: string | undefined) => {
+    if (props.selectable) {
+      return 'Are you sure you want to delete all selected images?'
+    }
+    return `Are you sure you want to delete ${title}?`
+  }
+
+  const getOptions = () => {
+    const options: string[] = props.photo.browseEntry.fromShare ? ['Select'] : ['Share', 'Unshare', 'Edit', 'Delete', 'Select']
+
+    if (props.selectedPlaylist) {
+      options.push('Remove from playlist');
+    }
+    else {
+      options.push('Add to playlist');
+    }
+
+    return options;
+  }
+
   return (
     <Box>
       <div
-        style={{ maxHeight: 600, maxWidth: 800, margin: props.margin, height: props.photo.height, width: props.photo.width, ...cont }}
+        style={{ margin: props.margin, height: photo.height, width: photo.width, ...cont }}
         className={!isSelected ? "not-selected" : ""}
       >
-        <ConfirmDialog open={confirmOpen} item={menuMediaEntry} onResult={deleteConfirmResult} title="Confirm Delete" message={`Are you sure you want to delete ${menuMediaEntry?.title}?`} />
+        <ConfirmDialog open={confirmOpen} item={menuMetaData} onResult={deleteConfirmResult} title="Confirm Delete" message={getConfirmMessage(menuMetaData?.title)} />
+        <ShareUserDialog open={shareUserOpen} metaData={menuMetaData} initialUsers={shareUsers} unshare={unshare} shareUsersResult={shareUserResult} />
+        <AddToPlaylistDialog open={addToPlaylistOpen} metaData={menuMetaData} result={addToPlaylistResult} />
 
         <Checkmark selected={isSelected ? true : false} />
-        <img
+        <img height={100} width={100}
           alt={props.photo.title}
           style={
             isSelected ? { ...imgStyle, ...selectedImgStyle } : { ...imgStyle }
           }
-          {...createPhoto(props.photo)}
+          {...createPhoto(photo)}
           onClick={handleOnClick}
         />
         <style>{`.not-selected:hover{outline:2px solid #06befa}`}</style>
       </div>
-      <Toolbar style={{ justifyContent: 'space-between' }}>
+      <Toolbar style={{ paddingLeft: 5, justifyContent: 'space-between' }} disableGutters={true}>
         <div onClick={() => { navImage(props.photo.browseEntry) }}>
-          <Typography variant="caption">{`${props.photo.browseEntry.mediaEntry?.title} (${props.photo.browseEntry.age})`}</Typography>
+          <Typography variant="caption">{`${props.photo.browseEntry.metaData?.title} (${props.photo.browseEntry.age})`}</Typography>
         </div>
         <div>
           <IconButton
-            style={{ minWidth: 30, outline: 'none' }}
-            onClick={(e) => handleClick(e, props.photo.browseEntry.mediaEntry)}
+            style={{ minWidth: 30, outline: 'none', paddingTop: 0, paddingBottom: 0, paddingLeft: 5, paddingRight: 5 }}
+            onClick={(e) => handleClick(e, props.photo.browseEntry.metaData)}
           >
             <MoreVertIcon />
           </IconButton>
           <Menu
-            id="video-actions"
+            id="image-actions"
             anchorEl={anchorEl}
             keepMounted
             open={open}
@@ -238,11 +372,11 @@ const SelectedImage = (props: SelectedImageProps) => {
             PaperProps={{
               style: {
                 maxHeight: ITEM_HEIGHT * 4.5,
-                width: '20ch',
+                width: '22ch',
               },
             }}
           >
-            {options.map((option) => (
+            {getOptions().map((option) => (
               <MenuItem key={option} onClick={() => handleMenu(option)}>
                 {getMenuOption(option)}
               </MenuItem>
