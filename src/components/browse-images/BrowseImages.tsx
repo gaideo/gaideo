@@ -241,7 +241,7 @@ export function BrowseImages(props: BrowseImagesProps) {
         }
     }, [history, props.photos, userSession, props.worker, props.updateProgressCallback]);
 
-    const shareSelectedCallback = useCallback((shareUsers: ShareUserEntry[]) => {
+    const shareSelectedCallback = useCallback((shareUsers: ShareUserEntry[], unshare: boolean) => {
         if (userSession?.isUserSignedIn()) {
             const shareArray: MediaMetaData[] = [];
             for (let i = 0; i < props.photos.length; i++) {
@@ -250,7 +250,7 @@ export function BrowseImages(props: BrowseImagesProps) {
                 }
             }
             if (shareArray.length > 0) {
-                trackPromise(shareFile(shareArray, userSession, shareUsers));
+                trackPromise(shareFile(shareArray, userSession, shareUsers, unshare));
             }
         }
     }, [props.photos, userSession]);

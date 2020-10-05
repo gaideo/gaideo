@@ -5,15 +5,16 @@ import DialogContent from '@material-ui/core/DialogContent';
 import DialogActions from '@material-ui/core/DialogActions';
 import Dialog from '@material-ui/core/Dialog';
 import FormControlLabel from '@material-ui/core/FormControlLabel';
-import { Checkbox } from '@material-ui/core';
+import { Checkbox, Typography } from '@material-ui/core';
 import { ShareUserEntry } from '../../models/share-user-entry';
 import { MediaMetaData } from '../../models/media-meta-data';
 
 export interface ShareUserDialogProps {
     open: boolean;
+    unshare: boolean;
     initialUsers: string[];
     metaData: MediaMetaData | null;
-    shareUsersResult: (item: MediaMetaData, shareEntries?: ShareUserEntry[]) => void;
+    shareUsersResult: (item: MediaMetaData, unshare: boolean, shareEntries?: ShareUserEntry[]) => void;
 }
 
 export default function ShareUserDialog(props: ShareUserDialogProps) {
@@ -36,13 +37,13 @@ export default function ShareUserDialog(props: ShareUserDialogProps) {
 
     const handleCancel = () => {
         if (props.metaData) {
-            props.shareUsersResult(props.metaData);
+            props.shareUsersResult(props.metaData, props.unshare);
         }
     };
 
     const handleOk = () => {
         if (props.metaData) {
-            props.shareUsersResult(props.metaData, shareEntries.slice());
+            props.shareUsersResult(props.metaData, props.unshare, shareEntries.slice());
         }
     };
 
@@ -61,9 +62,9 @@ export default function ShareUserDialog(props: ShareUserDialogProps) {
             aria-labelledby="share-user-dialog-title"
             open={props.open}
         >
-            <DialogTitle id="share-user-dialog-title">Share Media</DialogTitle>
+            <DialogTitle id="share-user-dialog-title">{props.unshare ? 'Unshare' : 'Share'} Media</DialogTitle>
             <DialogContent dividers>
-                <div style={{display: 'flex', flexDirection: 'column'}}>
+                <div style={{display: 'flex', flexDirection: 'column', minWidth: 300}}>
                 {shareEntries.map((option, index) => (
                     <FormControlLabel
                         key={option.userName}
@@ -79,6 +80,11 @@ export default function ShareUserDialog(props: ShareUserDialogProps) {
                     />
                 ))}
                 </div>
+                {shareEntries.length === 0 &&
+                <div>
+                    <Typography variant="h6">{props.unshare ? 'This media is not shared with anyone.' : 'You need to add friends before you can share media.'}</Typography>
+                </div>
+                }
             </DialogContent>
             <DialogActions>
                 <Button autoFocus onClick={handleCancel} color="primary">

@@ -6,7 +6,7 @@ import "./BrowseVideos.css";
 import MenuItem from '@material-ui/core/MenuItem';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import { useHistory } from 'react-router-dom';
-import { getCacheEntries, getShares, shareFile, getSelectedShares, getSelectedGroup, addToGroup, getCacheEntriesFromGroup, removeFromGroup } from '../../utilities/gaia-utils';
+import { getCacheEntries, getShares, shareFile, getSelectedShares, getSelectedGroup, addToGroup, getCacheEntriesFromGroup, removeFromGroup, isFileShared } from '../../utilities/gaia-utils';
 import { loadBrowseEntryFromCache, deleteVideoEntry, VideosType } from '../../utilities/media-utils';
 import ConfirmDialog from '../confirm-dialog/ConfirmDialog';
 import ShareUserDialog from '../share-user-dialog/ShareUserDialog';
@@ -20,21 +20,7 @@ import { ShareUserEntry } from '../../models/share-user-entry';
 import AddToPlaylistDialog from '../playlists/AddToPlaylistDialog';
 import { CacheResults } from '../../models/cache-entry';
 
-const options = [
-    'Share',
-    'Add to playlist',
-    'Edit',
-    'Delete'
-];
-
-const playlistOptions = [
-    'Share',
-    'Remove from playlist',
-    'Edit',
-    'Delete'
-  ];
-  
-const ITEM_HEIGHT = 48;
+const ITEM_HEIGHT = 54;
 
 interface BrowseVideosProps {
     videos: BrowseEntry[];
@@ -51,6 +37,7 @@ export function BrowseVideos(props: BrowseVideosProps) {
     const [confirmOpen, setConfirmOpen] = React.useState(false);
     const [shareUserOpen, setShareUserOpen] = React.useState(false);
     const [shareUsers, setShareUsers] = React.useState<Array<string>>([]);
+    const [unshare, setUnshare] = React.useState(false);
     const [menuMetaData, setMenuMetaData] = React.useState<MediaMetaData | null>(null);
     const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
     const open = Boolean(anchorEl);
@@ -112,7 +99,7 @@ export function BrowseVideos(props: BrowseVideosProps) {
                         setCacheResults(null);
                     }
                 }
-        }
+            }
         }
         if (videos.length === 0) {
             refresh();
@@ -182,10 +169,10 @@ export function BrowseVideos(props: BrowseVideosProps) {
         }
     }
 
-    const shareUserResult = (item: MediaMetaData, result: ShareUserEntry[] | undefined) => {
+    const shareUserResult = (item: MediaMetaData, unshare: boolean, result: ShareUserEntry[] | undefined) => {
         setShareUserOpen(false);
         if (userSession && result && result.length > 0) {
-            trackPromise(shareFile([item], userSession, result));
+            trackPromise(shareFile([item], userSession, result, unshare));
         }
     }
 
@@ -216,7 +203,7 @@ export function BrowseVideos(props: BrowseVideosProps) {
     const removeVideoFromGroup = async () => {
         if (menuMetaData && userSession?.isUserSignedIn() && selectedPlaylist) {
             let found: number = -1;
-            for (let i=0; i<videos?.length; i++) {
+            for (let i = 0; i < videos?.length; i++) {
                 if (videos[i].metaData.id === menuMetaData.id) {
                     found = i;
                     break;
@@ -227,6 +214,30 @@ export function BrowseVideos(props: BrowseVideosProps) {
                 let newVideos = videos.slice();
                 newVideos.splice(found, 1);
                 videosLoadedCallback(newVideos);
+            }
+        }
+    }
+
+    const handleShare = async (isUnshare: boolean) => {
+        if (userSession?.isUserSignedIn() && menuMetaData) {
+            let friends = await getShares(userSession);
+            if (friends) {
+                const users: string[] = []
+                for (let key in friends) {
+                    let canAdd = true;
+                    if (isUnshare) {
+                        const isShared = await isFileShared(userSession, key, menuMetaData);
+                        if (!isShared) {
+                            canAdd = false;
+                        }
+                    }
+                    if (canAdd) {
+                        users.push(key);
+                    }
+                }
+                setUnshare(isUnshare);
+                setShareUsers(users);
+                setShareUserOpen(true);
             }
         }
     }
@@ -242,22 +253,14 @@ export function BrowseVideos(props: BrowseVideosProps) {
                 history.push(`/publish/${menuMetaData.id}`);
             }
         }
-        else if (option === 'Share') {
-            let friends = await getShares(userSession);
-            if (friends) {
-                const users: string[] = []
-                for (let key in friends) {
-                    users.push(key);
-                }
-                setShareUsers(users);
-                setShareUserOpen(true);
-            }
+        else if (option === 'Share' || option === 'Unshare') {
+            trackPromise(handleShare(option === 'Unshare'));
         }
         else if (option === 'Add to playlist') {
             setAddToPlaylistOpen(true);
         }
-        else if (option === 'Remove from playlist' 
-            && menuMetaData 
+        else if (option === 'Remove from playlist'
+            && menuMetaData
             && userSession?.isUserSignedIn()
             && selectedPlaylist) {
             trackPromise(removeVideoFromGroup())
@@ -266,9 +269,15 @@ export function BrowseVideos(props: BrowseVideosProps) {
     };
 
     const getOptions = () => {
+        const options: string[] = ['Share', 'Unshare', 'Edit', 'Delete']
+
         if (selectedPlaylist) {
-            return playlistOptions;
+            options.push('Remove from playlist');
         }
+        else {
+            options.push('Add to playlist');
+        }
+
         return options;
     }
 
@@ -281,7 +290,7 @@ export function BrowseVideos(props: BrowseVideosProps) {
 
     return (
         <Fragment>
-            <ShareUserDialog open={shareUserOpen} metaData={menuMetaData} initialUsers={shareUsers} shareUsersResult={shareUserResult} />
+            <ShareUserDialog open={shareUserOpen} metaData={menuMetaData} initialUsers={shareUsers} unshare={unshare} shareUsersResult={shareUserResult} />
             <AddToPlaylistDialog open={addToPlaylistOpen} metaData={menuMetaData} result={addToPlaylistResult} />
             <ConfirmDialog open={confirmOpen} item={menuMetaData} onResult={deleteConfirmResult} title="Confirm Delete" message={`Are you sure you want to delete ${menuMetaData?.title}?`} />
             <Toolbar style={{ flexWrap: 'wrap', justifyContent: 'space-around' }}>

@@ -176,17 +176,8 @@ export async function updateMasterIndex(
                                         await userSession.deleteFile(key);
                                     }
                                 }
-                                catch {}
+                                catch { }
                             }
-                            let json = JSON.stringify(masterIndex);
-                            let encryptedJson = await userSession.encryptContent(json, {
-                                publicKey: fileRootInfo.publicKey
-                            });
-                            await userSession.putFile(publicFileName, encryptedJson, {
-                                encrypt: false,
-                                sign: false,
-                                wasString: true
-                            });
                         }
                         else if (operation === FileOperation.Delete || operation === FileOperation.Update) {
                             let shares = await getShares(userSession);
@@ -197,6 +188,18 @@ export async function updateMasterIndex(
                             }
                         }
                     }
+                    if (publicFileName && fileRootInfo.publicKey) {
+                        let json = JSON.stringify(masterIndex);
+                        let encryptedJson = await userSession.encryptContent(json, {
+                            publicKey: fileRootInfo.publicKey
+                        });
+                        await userSession.putFile(publicFileName, encryptedJson, {
+                            encrypt: false,
+                            sign: false,
+                            wasString: true
+                        });
+                    }
+
                 }
             }
         }
@@ -239,17 +242,19 @@ export async function listFiles(userSession: UserSession) {
     })
 }
 
-export async function shareFile(fileEntries: FileMetaData[], userSession: UserSession, shareUsers: ShareUserEntry[]) {
+export async function shareFile(fileEntries: FileMetaData[], userSession: UserSession, shareUsers: ShareUserEntry[], unshare: boolean) {
     const files: FileEntry[] = fileEntries.map(x => {
         return {
             metaData: x,
             indexFile: `${x.type}/${x.id}.index`
         }
     });
+    const op = unshare ? FileOperation.Unshare : FileOperation.Share;
     for (let i = 0; i < shareUsers.length; i++) {
         let su = shareUsers[i]
-        let op = su.share ? FileOperation.Share : FileOperation.Unshare;
-        await updateMasterIndex(userSession, null, op, files, su.userName);
+        if (su.share) {
+            await updateMasterIndex(userSession, null, op, files, su.userName);
+        }
     }
 }
 
@@ -576,7 +581,7 @@ export function getShareNames(selectedShares: Array<any> | null | undefined) {
     return shareNames;
 }
 
-export async function getShares(userSession: UserSession | null | undefined) {
+export async function getShares(userSession: UserSession) {
     let shares: any = {};
     try {
         let json = await userSession?.getFile("share-index", {
@@ -591,6 +596,23 @@ export async function getShares(userSession: UserSession | null | undefined) {
 
     }
     return shares;
+}
+
+export async function isFileShared(userSession: UserSession, shareName: string, fileMetaData: FileMetaData) {
+    const userData = userSession.loadUserData();
+    const rootInfo = await getShareRootInfo(userData, false, shareName);
+    const privateKeyFile = getPrivateKeyFileName(rootInfo.root, fileMetaData.id, fileMetaData.type);
+    let found = true;
+    try {
+        await userSession.getFile(privateKeyFile, {
+            decrypt: false,
+            verify: false
+        })
+    }
+    catch {
+        found = false;
+    }
+    return found;
 }
 
 export async function updateShares(userSession: UserSession, userNames: string[], deleteFlag: boolean = false) {

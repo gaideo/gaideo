@@ -96,8 +96,11 @@ export function Friends(props: FriendsProps) {
     }, [userSession, updateFriendListCallback]);
 
     const filterFriends = async (inputValue: string) => {
-        let friends: any = await getShares(userSession);
+        let friends: any = {};
         let options: any[] = [];
+        if (userSession && userSession.isUserSignedIn()) {
+            friends = await getShares(userSession);
+        }
         for (let key in friends) {
             if (!inputValue || (inputValue.length > 0 && key.startsWith(inputValue))) {
                 options.push({

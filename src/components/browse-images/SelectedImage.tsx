@@ -7,7 +7,7 @@ import { useHistory } from "react-router-dom";
 import { BrowseEntry } from "../../models/browse-entry";
 import { MediaMetaData } from "../../models/media-meta-data";
 import { Photo } from '../../models/photo';
-import { addToGroup, getShares, removeFromGroup, shareFile } from "../../utilities/gaia-utils";
+import { addToGroup, getShares, isFileShared, removeFromGroup, shareFile } from "../../utilities/gaia-utils";
 import { deleteImageEntry } from "../../utilities/media-utils";
 import MenuItem from '@material-ui/core/MenuItem';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
@@ -23,23 +23,7 @@ interface CheckmarkProps {
   selected: boolean
 }
 
-const options = [
-  'Share',
-  'Add to playlist',
-  'Edit',
-  'Delete',
-  'Select'
-];
-
-const playlistOptions = [
-  'Share',
-  'Remove from playlist',
-  'Edit',
-  'Delete',
-  'Select'
-];
-
-const ITEM_HEIGHT = 48;
+const ITEM_HEIGHT = 54;
 
 const Checkmark = (props: CheckmarkProps) => {
   return (
@@ -100,7 +84,7 @@ interface DeleteSelectedCallback {
 }
 
 interface ShareSelectedCallback {
-  (shareUsers: ShareUserEntry[]): void
+  (shareUsers: ShareUserEntry[], unshare: boolean): void
 }
 
 interface AddGroupSelectedCallback {
@@ -145,6 +129,7 @@ const SelectedImage = (props: SelectedImageProps) => {
   const [isSelected, setIsSelected] = useState(props.selected);
   const [shareUserOpen, setShareUserOpen] = React.useState(false);
   const [shareUsers, setShareUsers] = React.useState<Array<string>>([]);
+  const [unshare, setUnshare] = React.useState(false);
   const [addToPlaylistOpen, setAddToPlaylistOpen] = React.useState(false);
 
   const deleteImage = async (metaData: MediaMetaData, userSession: UserSession | undefined) => {
@@ -170,14 +155,14 @@ const SelectedImage = (props: SelectedImageProps) => {
     }
   }
 
-  const shareUserResult = (item: MediaMetaData, result: ShareUserEntry[] | undefined) => {
+  const shareUserResult = (item: MediaMetaData, unshare: boolean, result: ShareUserEntry[] | undefined) => {
     setShareUserOpen(false);
     if (userSession && result && result.length > 0) {
       if (props.selectable) {
-        props.shareSelectedCallback(result);
+        props.shareSelectedCallback(result, unshare);
       }
       else {
-        trackPromise(shareFile([item], userSession, result));
+        trackPromise(shareFile([item], userSession, result, unshare));
       }
     }
   }
@@ -219,6 +204,30 @@ const SelectedImage = (props: SelectedImageProps) => {
     setAnchorEl(null);
   }
 
+  const handleShare = async (isUnshare: boolean) => {
+    if (userSession?.isUserSignedIn()) {
+      let friends = await getShares(userSession);
+      if (friends) {
+        const users: string[] = []
+        for (let key in friends) {
+          let canAdd = true;
+          if (!props.selectable && isUnshare) {
+            const isShared = await isFileShared(userSession, key, props.photo.browseEntry.metaData);
+            if (!isShared) {
+              canAdd = false;
+            }
+          }
+          if (canAdd) {
+            users.push(key);
+          }
+        }
+        setUnshare(isUnshare)
+        setShareUsers(users);
+        setShareUserOpen(true);
+      }
+    }
+  }
+
   const handleMenu = async (option: string) => {
     if (option === 'Delete') {
       if (menuMetaData) {
@@ -233,18 +242,8 @@ const SelectedImage = (props: SelectedImageProps) => {
     else if (option.startsWith('Select')) {
       props.toggleSelectionCallback();
     }
-    else if (option === 'Share') {
-      if (userSession?.isUserSignedIn()) {
-        let friends = await getShares(userSession);
-        if (friends) {
-          const users: string[] = []
-          for (let key in friends) {
-            users.push(key);
-          }
-          setShareUsers(users);
-          setShareUserOpen(true);
-        }
-      }
+    else if (option === 'Share' || option === 'Unshare') {
+      trackPromise(handleShare(option === 'Unshare'));
     }
     else if (option === 'Add to playlist') {
       setAddToPlaylistOpen(true);
@@ -253,7 +252,7 @@ const SelectedImage = (props: SelectedImageProps) => {
       && menuMetaData
       && userSession?.isUserSignedIn()
       && props.selectedPlaylist) {
-        trackPromise(removePhotoFromGroup());
+      trackPromise(removePhotoFromGroup());
     }
     handleClose();
   };
@@ -320,9 +319,15 @@ const SelectedImage = (props: SelectedImageProps) => {
   }
 
   const getOptions = () => {
+    const options: string[] = ['Share', 'Unshare', 'Edit', 'Delete', 'Select']
+
     if (props.selectedPlaylist) {
-      return playlistOptions;
+      options.push('Remove from playlist');
     }
+    else {
+      options.push('Add to playlist');
+    }
+
     return options;
   }
 
@@ -333,7 +338,7 @@ const SelectedImage = (props: SelectedImageProps) => {
         className={!isSelected ? "not-selected" : ""}
       >
         <ConfirmDialog open={confirmOpen} item={menuMetaData} onResult={deleteConfirmResult} title="Confirm Delete" message={getConfirmMessage(menuMetaData?.title)} />
-        <ShareUserDialog open={shareUserOpen} metaData={menuMetaData} initialUsers={shareUsers} shareUsersResult={shareUserResult} />
+        <ShareUserDialog open={shareUserOpen} metaData={menuMetaData} initialUsers={shareUsers} unshare={unshare} shareUsersResult={shareUserResult} />
         <AddToPlaylistDialog open={addToPlaylistOpen} metaData={menuMetaData} result={addToPlaylistResult} />
 
         <Checkmark selected={isSelected ? true : false} />
