@@ -49,7 +49,7 @@ export default function App() {
     return ret;
   }
 
-  const initGaiaWorker = () => {
+  const initGaiaWorker = useCallback(() => {
     let w = new Worker('/scripts/workers/gaia-worker.js');
     w.addEventListener('message', (e) => {
       if (e.data.result) {
@@ -85,11 +85,10 @@ export default function App() {
       }
     });
     return w;
-  }
+  }, []);
 
   const [worker, setWorker] = useState<Worker | null>(null);
   const [db, setDB] = useState<IDBPDatabase<unknown> | null>(null);
-
   const [userData, setUserData] = useState<UserData | null>(null);
 
   const themeConfig = createMuiTheme(themeObject);
@@ -122,7 +121,7 @@ export default function App() {
     return () => {
     }
 
-  }, [setUserDataCallback, setWorker]);
+  }, [setUserDataCallback, setWorker, initGaiaWorker]);
 
   return (
     <ThemeProvider theme={themeConfig}>

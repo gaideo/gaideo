@@ -169,7 +169,8 @@ export async function updateMasterIndex(
                                         await userSession.putFile(key, privateLookup[key], {
                                             encrypt: false,
                                             sign: false,
-                                            wasString: true
+                                            wasString: true,
+                                            dangerouslyIgnoreEtag: true
                                         });
                                     }
                                     else {
@@ -196,7 +197,8 @@ export async function updateMasterIndex(
                         await userSession.putFile(publicFileName, encryptedJson, {
                             encrypt: false,
                             sign: false,
-                            wasString: true
+                            wasString: true,
+                            dangerouslyIgnoreEtag: true
                         });
                     }
 

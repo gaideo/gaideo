@@ -289,15 +289,19 @@ export async function encryptVideo(
     let dimWidth: number = 0;
     let dimHeight: number = 0;
     let isRotated: boolean = false;
+    let duration = '00:00:00.00';
     const dimensionRegex = /Stream.+,\s*([0-9]{3,5}x[0-9]{3,5})/g;
     const rotateRegex = /rotate\s*:\s*([0-9]+)/g;
+    const durationRegex = /Duration:\s*([0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{2,})/g
+    const timeRegex = /\s+time=([0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{2,})/g
+
     let gettingDimensions = false;
     let encrypting = false;
     let encryptingMessage = `Encrypting video.  This may take a while depending on the size...`;
 
     const handleLogMessage = (e: any) => {
         if (gettingDimensions) {
-            let dimResult = dimensionRegex.exec(e.message);
+            const dimResult = dimensionRegex.exec(e.message);
             if (dimResult?.length === 2) {
                 let xIdx = dimResult[1].indexOf('x');
                 dimWidth = parseInt(dimResult[1].substring(0, xIdx));
@@ -309,7 +313,7 @@ export async function encryptVideo(
                 }
             }
             else {
-                let rotateResult = rotateRegex.exec(e.message);
+                const rotateResult = rotateRegex.exec(e.message);
                 if (rotateResult?.length === 2) {
                     if (rotateResult[1] === "90") {
                         isRotated = true;
@@ -320,10 +324,19 @@ export async function encryptVideo(
                         }
                     }
                 }
+                else {
+                    const durationResult = durationRegex.exec(e.message);
+                    if (durationResult?.length === 2) {
+                        duration = durationResult[1];
+                    }
+                }
             }
         }
         else if (encrypting && e.message?.indexOf("frame=") >= 0) {
-            updateProgress(encryptingMessage, e.message);
+            const timeResult = timeRegex.exec(e.message);
+            if (timeResult?.length === 2 && duration) {
+                updateProgress(encryptingMessage, `Current time: ${timeResult[1]}, Duration: ${duration}`);
+            }
         }
     }
 

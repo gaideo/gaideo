@@ -604,11 +604,12 @@ export default function Main(props: MainProps) {
                                     <PublishVideo
                                         worker={props.worker}
                                         videos={videos}
-                                        videosLoadedCallback={videosLoadedCallback}
                                         photos={photos}
-                                        imagesLoadedCallback={imagesLoadedCallback}
                                         isMobile={isMobile}
-                                        updateProgressCallback={updateProgressCallback} />
+                                        videosLoadedCallback={videosLoadedCallback}
+                                        imagesLoadedCallback={imagesLoadedCallback}
+                                        updateProgressCallback={updateProgressCallback} 
+                                        />
                                 ) : (
                                         <Welcome />
                                     )
@@ -619,11 +620,12 @@ export default function Main(props: MainProps) {
                                     <PublishVideo
                                         worker={props.worker}
                                         videos={videos}
-                                        videosLoadedCallback={videosLoadedCallback}
                                         photos={photos}
-                                        imagesLoadedCallback={imagesLoadedCallback}
                                         isMobile={isMobile}
-                                        updateProgressCallback={updateProgressCallback} />
+                                        videosLoadedCallback={videosLoadedCallback}
+                                        imagesLoadedCallback={imagesLoadedCallback}
+                                        updateProgressCallback={updateProgressCallback}
+                                        />
                                 ) : (
                                         <Welcome />
                                     )

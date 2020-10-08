@@ -571,15 +571,8 @@ export default function PublishVideo(props: PublishVideoProps) {
 
                 setSuccessfullUploaded(true);
                 setUploading(false);
-                if (metaData.type === ImagesType) {
-                    history.push("/images/browse");
-                }
-                else if (metaData.type === UnencryptedVideosType) {
-                    history.push("/videos/browse");
-                }
-                else {
-                    history.push("/videos/browse");
-                }
+                handleReset();
+
             } catch (e) {
                 console.log(e);
                 setUploadFilesError(true)

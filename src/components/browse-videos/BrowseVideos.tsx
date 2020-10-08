@@ -315,7 +315,7 @@ export function BrowseVideos(props: BrowseVideosProps) {
                                 alt={x.metaData.title}
                                 src={`data:image/png;base64, ${x.previewImage}`} />
                         </div>
-                        <Toolbar style={{ justifyContent: 'space-between' }} disableGutters={true}>
+                        <Toolbar style={{paddingLeft: 5, justifyContent: 'space-between' }} disableGutters={true}>
                             <div onClick={() => { navVideo(x) }}>
                                 <Typography variant="caption">{`${x.metaData?.title} (${x.age})`}</Typography>
                             </div>
