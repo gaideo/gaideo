@@ -333,16 +333,16 @@ export async function getCacheEntriesFromGroup(
             }
             allEntries.sort((x, y) => {
                 if (!x && y) {
-                    return -1;
+                    return 1;
                 }
                 else if (x && !y) {
-                    return 1;
-                }
-                else if (x.lastUpdated < y.lastUpdated) {
                     return -1;
                 }
-                else if (x.lastUpdated > y.lastUpdated) {
+                else if (x.lastUpdated < y.lastUpdated) {
                     return 1;
+                }
+                else if (x.lastUpdated > y.lastUpdated) {
+                    return -1;
                 }
                 else {
                     return 0;
