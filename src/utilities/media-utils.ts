@@ -1,11 +1,14 @@
 import { UserSession } from "blockstack";
 import { BrowseEntry } from "../models/browse-entry";
-import { UpdateProgressCallback } from "../models/callbacks";
+import { ImagesLoadedCallback, UpdateProgressCallback, VideosLoadedCallback } from "../models/callbacks";
 import { FileOperation } from "../models/file-operation";
 import { MediaMetaData } from "../models/media-meta-data";
 import { updateMasterIndex, getShareRootInfo, getEncryptedFile, getPrivateKey, getFileIDFromIndexFileName, getTypeFromIndexFileName } from "./gaia-utils";
 import { base64ArrayBuffer } from "./encoding-utils";
-import { computeAge } from "./time-utils";
+import { computeAge, sleep } from "./time-utils";
+import { CacheEntry } from "../models/cache-entry";
+import { getImageSize } from "./image-utils";
+import { Photo } from "../models/photo";
 
 export const ImagesType = "images";
 export const VideosType = "videos";
@@ -195,4 +198,108 @@ export async function loadBrowseEntry(
         console.log(error);
     }
     return be;
+}
+
+export async function loadBatchVideos(userSession: UserSession, 
+    startIndex: number, 
+    cacheEntries: CacheEntry[], 
+    allVideos: BrowseEntry[],
+    batchSize: number,
+    videosLoadedCallback: VideosLoadedCallback) {
+    if (userSession?.isUserSignedIn()
+        && startIndex >= 0
+        && startIndex < cacheEntries.length) {
+        let loadingCount = 0;
+        let arr: BrowseEntry[] = [];
+        for (let i = startIndex; (i-startIndex) < batchSize && i < cacheEntries.length; i++) {
+            let decryptedData = await userSession.decryptContent(cacheEntries[i].data) as string;
+            if (decryptedData) {
+                let metaData = JSON.parse(decryptedData);
+                let be = await loadBrowseEntryFromCache(userSession, metaData, true) as BrowseEntry;
+                if (be) {
+                    let img = new Image();
+                    let src = `data:image/png;base64, ${be.previewImage}`;
+                    loadingCount++;
+                    img.onload = ev => {
+                        const size = getImageSize(img.width, img.height, 400, 200);
+                        be.previewImageWidth = size[0];
+                        be.previewImageHeight = size[1];
+                        be.actualHeight = img.height;
+                        be.actualWidth = img.width;
+                        arr.push(be);
+                    };
+                    img.src = src;
+
+                }
+            }
+        }
+        while (loadingCount !== arr.length) {
+            await sleep(300);
+        }
+        arr.forEach(x => {
+            allVideos.push(x);
+        });
+        videosLoadedCallback(allVideos.slice())
+    }
+}
+
+export function gcd(a: number, b: number): number {
+    if (b === 0)
+        return a
+    return gcd(b, a % b);
+}
+
+export function loadPhoto(be: BrowseEntry, img: HTMLImageElement, src: string) {
+    var r = gcd(img.width, img.height,);
+    let aspectWidth = img.width / r;
+    let aspectHeight = img.height / r;
+    let photo: Photo = {
+        browseEntry: be,
+        width: aspectWidth,
+        height: aspectHeight,
+        title: be.metaData.title,
+        src: src,
+        selected: false,
+        aspectWidth: aspectWidth,
+        aspectHeight: aspectHeight
+    }
+    return photo;
+}
+
+export async function loadBatchImages(userSession: UserSession, 
+    startIndex: number, 
+    cacheEntries: CacheEntry[], 
+    allPhotos: Photo[],
+    batchSize: number,
+    imagesLoadedCallback: ImagesLoadedCallback) {
+    if (userSession?.isUserSignedIn()
+        && startIndex >= 0
+        && startIndex < cacheEntries.length) {
+        let loadingCount = 0;
+        let arr: Photo[] = [];
+        for (let i = startIndex; (i-startIndex) < batchSize && i < cacheEntries.length; i++) {
+            let decryptedData = await userSession.decryptContent(cacheEntries[i].data) as string;
+            if (decryptedData) {
+                let metaData = JSON.parse(decryptedData);
+                let be = await loadBrowseEntryFromCache(userSession, metaData, true) as BrowseEntry
+                if (be) {
+                    let img = new Image();
+                    let src = `data:image/png;base64, ${be.previewImage}`;
+                    loadingCount++;
+                    img.onload = ev => {
+                        let photo = loadPhoto(be, img, src);
+                        arr.push(photo)
+                    };
+                    img.src = src;
+                }
+            }
+}
+        while (loadingCount !== arr.length) {
+            await sleep(300);
+        }
+        arr.forEach(x => {
+            allPhotos.push(x);
+        });
+        imagesLoadedCallback(allPhotos.slice())
+    }
 }

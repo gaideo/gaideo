@@ -1,10 +1,9 @@
 import React, { useEffect, Fragment, useCallback } from 'react';
 import { useConnect } from '@blockstack/connect';
 import { Box, Button } from '@material-ui/core';
-import { BrowseEntry } from '../../models/browse-entry';
 import { useHistory } from 'react-router-dom';
 import { addToGroup, getCacheEntries, getCacheEntriesFromGroup, getSelectedGroup, getSelectedShares, removeFromGroup, shareFile } from '../../utilities/gaia-utils';
-import { deleteImageEntry, ImagesType, loadBrowseEntryFromCache } from '../../utilities/media-utils';
+import { deleteImageEntry, ImagesType, loadBatchImages } from '../../utilities/media-utils';
 import Gallery from 'react-photo-gallery';
 import SelectedImage from './SelectedImage';
 import { Photo } from '../../models/photo';
@@ -36,6 +35,9 @@ interface BrowseImagesProps {
     updateProgressCallback: UpdateProgressCallback;
 }
 
+const MAX_MORE = 12;
+const batchSize = 4;
+
 export function BrowseImages(props: BrowseImagesProps) {
     const { authOptions } = useConnect();
     const { userSession } = authOptions;
@@ -45,32 +47,7 @@ export function BrowseImages(props: BrowseImagesProps) {
     const [selectedFriends, setSelectedFriends] = React.useState<Array<string> | null>(null);
     const [selectedPlaylist, setSelectedPlaylist] = React.useState<string | null>(null);
     const history = useHistory();
-    const MAX_MORE = 12;
 
-    function gcd(a: number, b: number): number {
-        if (b === 0)
-            return a
-        return gcd(b, a % b);
-    }
-
-    const loadPhoto = (be: BrowseEntry, img: HTMLImageElement, src: string) => {
-        var r = gcd(img.width, img.height,);
-        let aspectWidth = img.width / r;
-        let aspectHeight = img.height / r;
-        let photo: Photo = {
-            browseEntry: be,
-            width: aspectWidth,
-            height: aspectHeight,
-            title: be.metaData.title,
-            src: src,
-            selected: false,
-            aspectWidth: aspectWidth,
-            aspectHeight: aspectHeight
-        }
-        return photo;
-    }
-
-    const loadPhotoCallback = useCallback(loadPhoto, []);
     const db = props.db;
     const worker = props.worker;
     const imagesLoadedCallback = props.imagesLoadedCallback;
@@ -95,22 +72,12 @@ export function BrowseImages(props: BrowseImagesProps) {
                 setSelectedPlaylist(sp);
                 setIsSelectable(false);
                 if (moreCacheResults.cacheEntries?.length > 0) {
-                    for (let i = 0; i < moreCacheResults.cacheEntries?.length; i++) {
-
-                        let decryptedData = await userSession.decryptContent(moreCacheResults.cacheEntries[i].data) as string;
-                        if (decryptedData) {
-                            let metaData = JSON.parse(decryptedData);
-                            let be = await loadBrowseEntryFromCache(userSession, metaData, true) as BrowseEntry
-                            if (be) {
-                                let img = new Image();
-                                let src = `data:image/png;base64, ${be.previewImage}`;
-                                img.onload = ev => {
-                                    let photo = loadPhotoCallback(be, img, src);
-                                    arr.push(photo)
-                                    imagesLoadedCallback(arr.slice())
-                                };
-                                img.src = src;
-                            }
+                    for (let i = 0; i < moreCacheResults.cacheEntries?.length; i+=batchSize) {
+                        if (i === 0) {
+                            await trackPromise(loadBatchImages(userSession, i, moreCacheResults.cacheEntries, arr, batchSize, imagesLoadedCallback));
+                        }
+                        else {
+                            loadBatchImages(userSession, i, moreCacheResults.cacheEntries, arr, batchSize, imagesLoadedCallback);
                         }
                     }
                     if (moreCacheResults.nextKey && moreCacheResults.nextPrimaryKey) {
@@ -126,11 +93,11 @@ export function BrowseImages(props: BrowseImagesProps) {
         if (photos.length === 0) {
             refresh();
         }
-    }, [userSession, photos, db, imagesLoadedCallback, loadPhotoCallback, worker]);
+    }, [userSession, photos, db, imagesLoadedCallback, worker]);
 
     const loadMore = async () => {
         if (userSession && props.db && cacheResults && cacheResults.nextKey && cacheResults.nextPrimaryKey) {
-
+            console.log('load more');
             try {
                 setLoadingMore(true)
                 let arr: Photo[] = props.photos;
@@ -142,22 +109,8 @@ export function BrowseImages(props: BrowseImagesProps) {
                     moreCacheResults = await getCacheEntries(userSession, props.db, ImagesType, MAX_MORE, cacheResults, selectedFriends);
                 }
                 if (moreCacheResults.cacheEntries?.length > 0) {
-                    for (let i = 0; i < moreCacheResults.cacheEntries?.length; i++) {
-                        let decryptedData = await userSession.decryptContent(moreCacheResults.cacheEntries[i].data) as string;
-                        if (decryptedData) {
-                            let metaData = JSON.parse(decryptedData);
-                            let be = await loadBrowseEntryFromCache(userSession, metaData, true) as BrowseEntry
-                            if (be) {
-                                let img = new Image();
-                                let src = `data:image/png;base64, ${be.previewImage}`;
-                                img.onload = ev => {
-                                    let photo = loadPhoto(be, img, src);
-                                    arr.push(photo)
-                                    props.imagesLoadedCallback(arr.slice())
-                                };
-                                img.src = src;
-                            }
-                        }
+                    for (let i = 0; i < moreCacheResults.cacheEntries?.length; i+=batchSize) {
+                        await loadBatchImages(userSession, i, moreCacheResults.cacheEntries, arr, batchSize, imagesLoadedCallback);
                     }
                 }
                 if (moreCacheResults.nextKey && moreCacheResults.nextPrimaryKey) {

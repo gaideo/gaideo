@@ -1,4 +1,4 @@
-import React, { useEffect, Fragment } from 'react';
+import React, { useEffect } from 'react';
 import { useConnect } from '@blockstack/connect';
 import { Toolbar, Typography, IconButton, Menu, Button } from '@material-ui/core';
 import { BrowseEntry } from '../../models/browse-entry';
@@ -7,7 +7,7 @@ import MenuItem from '@material-ui/core/MenuItem';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import { useHistory } from 'react-router-dom';
 import { getCacheEntries, getShares, shareFile, getSelectedShares, getSelectedGroup, addToGroup, getCacheEntriesFromGroup, removeFromGroup, isFileShared } from '../../utilities/gaia-utils';
-import { loadBrowseEntryFromCache, deleteVideoEntry, VideosType } from '../../utilities/media-utils';
+import { deleteVideoEntry, VideosType, loadBatchVideos } from '../../utilities/media-utils';
 import ConfirmDialog from '../confirm-dialog/ConfirmDialog';
 import ShareUserDialog from '../share-user-dialog/ShareUserDialog';
 import { MediaMetaData } from '../../models/media-meta-data';
@@ -15,12 +15,13 @@ import { trackPromise } from 'react-promise-tracker';
 import { IDBPDatabase } from 'idb';
 import { UpdateProgressCallback, VideosLoadedCallback } from '../../models/callbacks';
 import { UserSession } from 'blockstack';
-import { getImageSize } from '../../utilities/image-utils';
 import { ShareUserEntry } from '../../models/share-user-entry';
 import AddToPlaylistDialog from '../playlists/AddToPlaylistDialog';
 import { CacheResults } from '../../models/cache-entry';
 
 const ITEM_HEIGHT = 54;
+const MAX_MORE = 12;
+const batchSize = 4;
 
 interface BrowseVideosProps {
     videos: BrowseEntry[];
@@ -48,58 +49,50 @@ export function BrowseVideos(props: BrowseVideosProps) {
     const [selectedPlaylist, setSelectedPlaylist] = React.useState<string | null>(null);
     const [addToPlaylistOpen, setAddToPlaylistOpen] = React.useState(false);
 
-    const MAX_MORE = 12;
-
     const db = props.db;
     const worker = props.worker;
     const videosLoadedCallback = props.videosLoadedCallback;
     const videos = props.videos;
 
     useEffect(() => {
+
         const refresh = async () => {
             let arr: BrowseEntry[] = [];
             if (worker && db && userSession?.isUserSignedIn()) {
-                let sp = await getSelectedGroup(userSession);
-                let moreCacheResults;
-                if (sp) {
-                    moreCacheResults = await getCacheEntriesFromGroup(userSession, db, VideosType, worker, sp, MAX_MORE, null);
-                }
-                else {
-                    let sf = await getSelectedShares(userSession);
-                    setSelectedFriends(sf);
-                    moreCacheResults = await getCacheEntries(userSession, db, VideosType, MAX_MORE, null, sf);
-                }
-                setSelectedPlaylist(sp);
-                if (moreCacheResults.cacheEntries?.length > 0) {
-                    for (let i = 0; i < moreCacheResults.cacheEntries?.length; i++) {
-                        let decryptedData = await userSession.decryptContent(moreCacheResults.cacheEntries[i].data) as string;
-                        if (decryptedData) {
-                            let metaData = JSON.parse(decryptedData);
-                            let be = await loadBrowseEntryFromCache(userSession, metaData, true) as BrowseEntry;
-                            if (be) {
-                                let img = new Image();
-                                let src = `data:image/png;base64, ${be.previewImage}`;
-                                img.onload = ev => {
-                                    const size = getImageSize(img.width, img.height, 400, 200);
-                                    be.previewImageWidth = size[0];
-                                    be.previewImageHeight = size[1];
-                                    be.actualHeight = img.height;
-                                    be.actualWidth = img.width;
-                                    arr.push(be);
-                                    videosLoadedCallback(arr.slice())
-                                };
-                                img.src = src;
-
-                            }
-                        }
-                    }
-                    if (moreCacheResults.nextKey && moreCacheResults.nextPrimaryKey) {
-                        setCacheResults(moreCacheResults);
+                setLoadingMore(true);
+                try {
+                    let sp = await getSelectedGroup(userSession);
+                    let moreCacheResults;
+                    if (sp) {
+                        moreCacheResults = await getCacheEntriesFromGroup(userSession, db, VideosType, worker, sp, MAX_MORE, null);
                     }
                     else {
-                        setCacheResults(null);
+                        let sf = await getSelectedShares(userSession);
+                        setSelectedFriends(sf);
+                        moreCacheResults = await getCacheEntries(userSession, db, VideosType, MAX_MORE, null, sf);
+                    }
+                    setSelectedPlaylist(sp);
+                    if (moreCacheResults.cacheEntries?.length > 0) {
+                        for (let i = 0; i < moreCacheResults.cacheEntries?.length; i += batchSize) {
+                            if (i === 0) {
+                                await trackPromise(loadBatchVideos(userSession, i, moreCacheResults.cacheEntries, arr, batchSize, videosLoadedCallback));
+                            }
+                            else {
+                                await loadBatchVideos(userSession, i, moreCacheResults.cacheEntries, arr, batchSize, videosLoadedCallback);
+                            }
+                        }
+                        if (moreCacheResults.nextKey && moreCacheResults.nextPrimaryKey) {
+                            setCacheResults(moreCacheResults);
+                        }
+                        else {
+                            setCacheResults(null);
+                        }
                     }
                 }
+                finally {
+                    setLoadingMore(false)
+                }
+
             }
         }
         if (videos.length === 0) {
@@ -120,24 +113,8 @@ export function BrowseVideos(props: BrowseVideosProps) {
                     moreCacheResults = await getCacheEntries(userSession, props.db, VideosType, MAX_MORE, cacheResults, selectedFriends);
                 }
                 if (moreCacheResults.cacheEntries?.length > 0) {
-                    for (let i = 0; i < moreCacheResults.cacheEntries?.length; i++) {
-                        let decryptedData = await userSession.decryptContent(moreCacheResults.cacheEntries[i].data) as string;
-                        if (decryptedData) {
-                            let metaData = JSON.parse(decryptedData);
-                            let be = await loadBrowseEntryFromCache(userSession, metaData, true) as BrowseEntry
-                            if (be) {
-                                let img = new Image();
-                                let src = `data:image/png;base64, ${be.previewImage}`;
-                                img.onload = ev => {
-                                    const size = getImageSize(img.width, img.height, 330, 183);
-                                    be.previewImageWidth = size[0];
-                                    be.previewImageHeight = size[1];
-                                    arr.push(be);
-                                    props.videosLoadedCallback(arr.slice())
-                                };
-                                img.src = src;
-                            }
-                        }
+                    for (let i = 0; i < moreCacheResults.cacheEntries?.length; i += batchSize) {
+                        await loadBatchVideos(userSession, i, moreCacheResults.cacheEntries, arr, batchSize, videosLoadedCallback);
                     }
                 }
                 if (moreCacheResults.nextKey && moreCacheResults.nextPrimaryKey) {
@@ -157,6 +134,14 @@ export function BrowseVideos(props: BrowseVideosProps) {
     const deleteVideo = async (metaData: MediaMetaData, userSession: UserSession | undefined) => {
         if (userSession) {
             await deleteVideoEntry(metaData, userSession, props.worker, props.updateProgressCallback);
+            for (let i = 0; i < props.videos.length; i++) {
+                if (props.videos[i].metaData.id === metaData.id) {
+                    let newVideos = videos.slice();
+                    newVideos.splice(i, 1);
+                    props.videosLoadedCallback(newVideos);
+                    break;
+                }
+            }
         }
     }
 
@@ -165,7 +150,7 @@ export function BrowseVideos(props: BrowseVideosProps) {
         if (result) {
             let metaData: MediaMetaData = item as MediaMetaData;
             if (metaData) {
-                trackPromise(deleteVideo(metaData, userSession).then(x => { history.go(0) }))
+                trackPromise(deleteVideo(metaData, userSession))
             }
         }
     }
@@ -193,7 +178,7 @@ export function BrowseVideos(props: BrowseVideosProps) {
     }
 
     const handleClick = (event: React.MouseEvent<HTMLElement>, metaData: MediaMetaData, fromShare: boolean) => {
-        setMenuMetaData(metaData);        
+        setMenuMetaData(metaData);
         setMenuFromShare(fromShare);
         setAnchorEl(event.currentTarget);
     };
@@ -291,7 +276,7 @@ export function BrowseVideos(props: BrowseVideosProps) {
     }
 
     return (
-        <Fragment>
+        <div>
             <ShareUserDialog open={shareUserOpen} metaData={menuMetaData} initialUsers={shareUsers} unshare={unshare} shareUsersResult={shareUserResult} />
             <AddToPlaylistDialog open={addToPlaylistOpen} metaData={menuMetaData} result={addToPlaylistResult} />
             <ConfirmDialog open={confirmOpen} item={menuMetaData} onResult={deleteConfirmResult} title="Confirm Delete" message={`Are you sure you want to delete ${menuMetaData?.title}?`} />
@@ -315,7 +300,7 @@ export function BrowseVideos(props: BrowseVideosProps) {
                                 alt={x.metaData.title}
                                 src={`data:image/png;base64, ${x.previewImage}`} />
                         </div>
-                        <Toolbar style={{paddingLeft: 5, justifyContent: 'space-between' }} disableGutters={true}>
+                        <Toolbar style={{ paddingLeft: 5, justifyContent: 'space-between' }} disableGutters={true}>
                             <div onClick={() => { navVideo(x) }}>
                                 <Typography variant="caption">{`${x.metaData?.title} (${x.age})`}</Typography>
                             </div>
@@ -355,6 +340,6 @@ export function BrowseVideos(props: BrowseVideosProps) {
                     <Button disabled={loadingMore} onClick={loadMore}>Show More</Button>
                 </div>
             }
-        </Fragment>
+        </div>
     );
 }
