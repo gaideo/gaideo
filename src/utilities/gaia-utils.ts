@@ -244,22 +244,6 @@ export async function listFiles(userSession: UserSession) {
     })
 }
 
-export async function shareFile(fileEntries: FileMetaData[], userSession: UserSession, shareUsers: ShareUserEntry[], unshare: boolean) {
-    const files: FileEntry[] = fileEntries.map(x => {
-        return {
-            metaData: x,
-            indexFile: `${x.type}/${x.id}.index`
-        }
-    });
-    const op = unshare ? FileOperation.Unshare : FileOperation.Share;
-    for (let i = 0; i < shareUsers.length; i++) {
-        let su = shareUsers[i]
-        if (su.share) {
-            await updateMasterIndex(userSession, null, op, files, su.userName);
-        }
-    }
-}
-
 export function getFileIDFromIndexFileName(fileName: string) {
     let i = fileName.lastIndexOf('/');
     if (i >= 0) {
@@ -624,24 +608,80 @@ export async function isFileShared(userSession: UserSession, shareName: string, 
     return found;
 }
 
+export async function shareFile(fileEntries: FileMetaData[], userSession: UserSession, shareUsers: ShareUserEntry[], unshare: boolean) {
+    const files: FileEntry[] = fileEntries.map(x => {
+        return {
+            metaData: x,
+            indexFile: `${x.type}/${x.id}.index`
+        }
+    });
+    const op = unshare ? FileOperation.Unshare : FileOperation.Share;
+    for (let i = 0; i < shareUsers.length; i++) {
+        let su = shareUsers[i]
+        if (su.share) {
+            await updateMasterIndex(userSession, null, op, files, su.userName);
+        }
+    }
+}
+
+export async function deleteSharesForUser(userSession: UserSession, userName: string) {
+    const userData = userSession.loadUserData();
+    const rootInfo = await getShareRootInfo(userData, false, userName);
+    const removeArr: string[] = [];
+    await userSession.listFiles((name: string) => {
+        if (name.startsWith(rootInfo.root)) {
+            removeArr.push(name);
+        }
+        return true;
+    });
+    for (let i = 0; i < removeArr.length; i++) {
+        await userSession.deleteFile(removeArr[i]);
+    }
+}
+
 export async function updateShares(userSession: UserSession, userNames: string[], deleteFlag: boolean = false) {
-    let shares = await getShares(userSession);
     if (userNames.length > 0) {
+        const shares = await getShares(userSession);
+        const selectedShares = await getSelectedShares(userSession);
+        const selectedSharesMap: any = {};
+        let removedSelected = false;
+        if (selectedShares) {
+            selectedShares.forEach(x => { selectedSharesMap[x] = true })
+        }
         for (let i = 0; i < userNames.length; i++) {
-            let userName = userNames[i];
+            const userName = userNames[i];
             if (deleteFlag) {
-                delete shares[userName.toLowerCase()];
+                try {
+                    await deleteSharesForUser(userSession, userName);
+                    delete shares[userName.toLowerCase()];
+                    if (selectedSharesMap[userName]) {
+                        delete selectedSharesMap[userName];
+                        removedSelected = true;
+                    }
+                }
+                catch (error) {
+                    console.log(error);
+                }
             }
             else {
                 shares[userName.toLowerCase()] = userName;
             }
         }
+
+        await userSession.putFile("share-index", JSON.stringify(shares), {
+            encrypt: true,
+            wasString: true,
+            sign: true
+        });
+
+        if (removedSelected) {
+            const newSelectedShared: string[] = [];
+            for (let key in selectedSharesMap) {
+                newSelectedShared.push(key);
+            }
+            await saveSelectedShares(userSession, newSelectedShared);
+        }
     }
-    await userSession.putFile("share-index", JSON.stringify(shares), {
-        encrypt: true,
-        wasString: true,
-        sign: true
-    });
 }
 
 export async function updateGroup(userSession: UserSession, group: Group, deleteFlag: boolean = false) {

@@ -113,8 +113,8 @@ export function BrowseVideos(props: BrowseVideosProps) {
                     moreCacheResults = await getCacheEntries(userSession, props.db, VideosType, MAX_MORE, cacheResults, selectedFriends);
                 }
                 if (moreCacheResults.cacheEntries?.length > 0) {
-                    for (let i = 0; i < moreCacheResults.cacheEntries?.length; i += batchSize) {
-                        await loadBatchVideos(userSession, i, moreCacheResults.cacheEntries, arr, batchSize, videosLoadedCallback);
+                    for (let i = 0; i < moreCacheResults.cacheEntries?.length; i += 1) {
+                        await loadBatchVideos(userSession, i, moreCacheResults.cacheEntries, arr, 1, videosLoadedCallback);
                     }
                 }
                 if (moreCacheResults.nextKey && moreCacheResults.nextPrimaryKey) {
