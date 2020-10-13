@@ -127,7 +127,7 @@ export async function loadBrowseEntryFromCache(userSession: UserSession, metaDat
             }
             if (source || metaData.type === ImagesType) {
 
-                let content: string | ArrayBuffer | undefined;
+                let content: string | ArrayBuffer | null;
 
                 if (loadPreviewImage) {
                     let previewImageName = metaData.previewImageName;
@@ -142,7 +142,7 @@ export async function loadBrowseEntryFromCache(userSession: UserSession, metaDat
                     content = await getEncryptedFile(userSession, previewImageName, metaData.id, metaData.type, metaData.userName);
                 }
                 else {
-                    content = undefined;
+                    content = null;
                 }
                 let userData = userSession.loadUserData();
                 be = {

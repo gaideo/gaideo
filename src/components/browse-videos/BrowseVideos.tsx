@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { Fragment, useEffect } from 'react';
 import { useConnect } from '@blockstack/connect';
 import { Toolbar, Typography, IconButton, Menu, Button } from '@material-ui/core';
 import { BrowseEntry } from '../../models/browse-entry';
@@ -6,7 +6,7 @@ import "./BrowseVideos.css";
 import MenuItem from '@material-ui/core/MenuItem';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import { useHistory } from 'react-router-dom';
-import { getCacheEntries, getShares, shareFile, getSelectedShares, getSelectedGroup, addToGroup, getCacheEntriesFromGroup, removeFromGroup, isFileShared } from '../../utilities/gaia-utils';
+import { getCacheEntries, getShares, shareFile, getSelectedShares, getSelectedGroup, addToGroup, getCacheEntriesFromGroup, removeFromGroup, isFileShared, getCacheEntriesFromSearch } from '../../utilities/gaia-utils';
 import { deleteVideoEntry, VideosType, loadBatchVideos } from '../../utilities/media-utils';
 import ConfirmDialog from '../confirm-dialog/ConfirmDialog';
 import ShareUserDialog from '../share-user-dialog/ShareUserDialog';
@@ -18,6 +18,7 @@ import { UserSession } from 'blockstack';
 import { ShareUserEntry } from '../../models/share-user-entry';
 import AddToPlaylistDialog from '../playlists/AddToPlaylistDialog';
 import { CacheResults } from '../../models/cache-entry';
+import PublishIcon from '@material-ui/icons/Publish';
 
 const ITEM_HEIGHT = 54;
 const MAX_MORE = 12;
@@ -29,6 +30,8 @@ interface BrowseVideosProps {
     db?: IDBPDatabase<unknown> | null | undefined;
     worker: Worker | null;
     updateProgressCallback: UpdateProgressCallback;
+    isMobile: boolean;
+    searchText: string;
 }
 
 export function BrowseVideos(props: BrowseVideosProps) {
@@ -48,6 +51,7 @@ export function BrowseVideos(props: BrowseVideosProps) {
     const [selectedFriends, setSelectedFriends] = React.useState<Array<string> | null | undefined>([]);
     const [selectedPlaylist, setSelectedPlaylist] = React.useState<string | null>(null);
     const [addToPlaylistOpen, setAddToPlaylistOpen] = React.useState(false);
+    const [noResults, setNoResults] = React.useState(false);
 
     const db = props.db;
     const worker = props.worker;
@@ -61,18 +65,24 @@ export function BrowseVideos(props: BrowseVideosProps) {
             if (worker && db && userSession?.isUserSignedIn()) {
                 setLoadingMore(true);
                 try {
-                    let sp = await getSelectedGroup(userSession);
                     let moreCacheResults;
-                    if (sp) {
-                        moreCacheResults = await getCacheEntriesFromGroup(userSession, db, VideosType, worker, sp, MAX_MORE, null);
+                    if (props.searchText && props.searchText.trim().length > 0) {
+                        moreCacheResults = await getCacheEntriesFromSearch(db, VideosType, props.searchText, MAX_MORE, null);
                     }
                     else {
-                        let sf = await getSelectedShares(userSession);
-                        setSelectedFriends(sf);
-                        moreCacheResults = await getCacheEntries(userSession, db, VideosType, MAX_MORE, null, sf);
+                        let sp = await getSelectedGroup(userSession);
+                        if (sp) {
+                            moreCacheResults = await getCacheEntriesFromGroup(userSession, db, VideosType, worker, sp, MAX_MORE, null);
+                        }
+                        else {
+                            let sf = await getSelectedShares(userSession);
+                            setSelectedFriends(sf);
+                            moreCacheResults = await getCacheEntries(userSession, db, VideosType, MAX_MORE, null, sf);
+                        }
+                        setSelectedPlaylist(sp);
                     }
-                    setSelectedPlaylist(sp);
                     if (moreCacheResults.cacheEntries?.length > 0) {
+                        setNoResults(false);
                         for (let i = 0; i < moreCacheResults.cacheEntries?.length; i += batchSize) {
                             if (i === 0) {
                                 await trackPromise(loadBatchVideos(userSession, i, moreCacheResults.cacheEntries, arr, batchSize, videosLoadedCallback));
@@ -88,6 +98,9 @@ export function BrowseVideos(props: BrowseVideosProps) {
                             setCacheResults(null);
                         }
                     }
+                    else {
+                        setNoResults(true);
+                    }
                 }
                 finally {
                     setLoadingMore(false)
@@ -98,7 +111,7 @@ export function BrowseVideos(props: BrowseVideosProps) {
         if (videos.length === 0) {
             refresh();
         }
-    }, [userSession, db, videos, videosLoadedCallback, worker]);
+    }, [userSession, db, videos, videosLoadedCallback, worker, props.searchText]);
 
     const loadMore = async () => {
         if (userSession && props.db && cacheResults && cacheResults.nextKey && cacheResults.nextPrimaryKey) {
@@ -106,7 +119,10 @@ export function BrowseVideos(props: BrowseVideosProps) {
             try {
                 let arr: BrowseEntry[] = props.videos;
                 let moreCacheResults;
-                if (selectedPlaylist) {
+                if (props.searchText && props.searchText.trim().length > 0) {
+                    moreCacheResults = await getCacheEntriesFromSearch(props.db, VideosType, props.searchText, MAX_MORE, cacheResults);
+                }
+                else if (selectedPlaylist) {
                     moreCacheResults = await getCacheEntriesFromGroup(userSession, props.db, VideosType, props.worker, selectedPlaylist, MAX_MORE, cacheResults);
                 }
                 else {
@@ -237,7 +253,7 @@ export function BrowseVideos(props: BrowseVideosProps) {
         }
         else if (option === 'Edit') {
             if (menuMetaData) {
-                history.push(`/publish/${menuMetaData.id}`);
+                history.push(`/publish/${menuMetaData.type}/${menuMetaData.id}`);
             }
         }
         else if (option === 'Share' || option === 'Unshare') {
@@ -276,70 +292,84 @@ export function BrowseVideos(props: BrowseVideosProps) {
     }
 
     return (
-        <div>
-            <ShareUserDialog open={shareUserOpen} metaData={menuMetaData} initialUsers={shareUsers} unshare={unshare} shareUsersResult={shareUserResult} />
-            <AddToPlaylistDialog open={addToPlaylistOpen} metaData={menuMetaData} result={addToPlaylistResult} />
-            <ConfirmDialog open={confirmOpen} item={menuMetaData} onResult={deleteConfirmResult} title="Confirm Delete" message={`Are you sure you want to delete ${menuMetaData?.title}?`} />
-            <Toolbar style={{ flexWrap: 'wrap', justifyContent: 'space-around' }}>
-                {props.videos.map(x => (
-                    <div key={x.metaData.id}>
-                        <div
-                            style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                width: 331.734,
-                                height: 173.641,
-                                overflow: 'hidden',
-                                cursor: 'pointer',
-                            }} onClick={() => { navVideo(x); }}>
-                            <img
-                                style={{ marginLeft: 'auto', marginRight: 'auto' }}
-                                width={x.previewImageWidth}
-                                height={x.previewImageHeight}
-                                id={x.metaData.id}
-                                alt={x.metaData.title}
-                                src={`data:image/png;base64, ${x.previewImage}`} />
+        <Fragment>
+            {(props.videos && props.videos.length > 0) &&
+                <div>
+                    <ShareUserDialog open={shareUserOpen} metaData={menuMetaData} initialUsers={shareUsers} unshare={unshare} shareUsersResult={shareUserResult} />
+                    <AddToPlaylistDialog open={addToPlaylistOpen} metaData={menuMetaData} result={addToPlaylistResult} />
+                    <ConfirmDialog open={confirmOpen} item={menuMetaData} onResult={deleteConfirmResult} title="Confirm Delete" message={`Are you sure you want to delete ${menuMetaData?.title}?`} />
+                    <Toolbar style={{ flexWrap: 'wrap', justifyContent: 'space-around' }}>
+                        {props.videos.map(x => (
+                            <div key={x.metaData.id}>
+                                <div
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        width: 331.734,
+                                        height: 173.641,
+                                        overflow: 'hidden',
+                                        cursor: 'pointer',
+                                    }} onClick={() => { navVideo(x); }}>
+                                    <img
+                                        style={{ marginLeft: 'auto', marginRight: 'auto' }}
+                                        width={x.previewImageWidth}
+                                        height={x.previewImageHeight}
+                                        id={x.metaData.id}
+                                        alt={x.metaData.title}
+                                        src={`data:image/png;base64, ${x.previewImage}`} />
+                                </div>
+                                <Toolbar style={{ paddingLeft: 5, justifyContent: 'space-between' }} disableGutters={true}>
+                                    <div onClick={() => { navVideo(x) }}>
+                                        <Typography variant="caption">{`${x.metaData?.title} (${x.age})`}</Typography>
+                                    </div>
+                                    <div>
+                                        <IconButton
+                                            style={{ minWidth: 30, outline: 'none', paddingTop: 0, paddingBottom: 0, paddingLeft: 5, paddingRight: 5 }}
+                                            onClick={(e) => handleClick(e, x.metaData, x.fromShare)}
+                                        >
+                                            <MoreVertIcon />
+                                        </IconButton>
+                                        <Menu
+                                            id="video-actions"
+                                            anchorEl={anchorEl}
+                                            keepMounted
+                                            open={open}
+                                            onClose={handleClose}
+                                            PaperProps={{
+                                                style: {
+                                                    maxHeight: ITEM_HEIGHT * 4.5,
+                                                    width: '22ch'
+                                                },
+                                            }}
+                                        >
+                                            {getOptions().map((option) => (
+                                                <MenuItem key={option} selected={option === 'Edit'} onClick={() => handleMenu(option)}>
+                                                    {option}
+                                                </MenuItem>
+                                            ))}
+                                        </Menu>
+                                    </div>
+                                </Toolbar>
+                            </div>
+                        ))}
+                    </Toolbar>
+                    {canLoadMore() &&
+                        <div style={{ display: 'flex', justifyContent: 'center' }}>
+                            <Button disabled={loadingMore} onClick={loadMore}>Show More</Button>
                         </div>
-                        <Toolbar style={{ paddingLeft: 5, justifyContent: 'space-between' }} disableGutters={true}>
-                            <div onClick={() => { navVideo(x) }}>
-                                <Typography variant="caption">{`${x.metaData?.title} (${x.age})`}</Typography>
-                            </div>
-                            <div>
-                                <IconButton
-                                    style={{ minWidth: 30, outline: 'none', paddingTop: 0, paddingBottom: 0, paddingLeft: 5, paddingRight: 5 }}
-                                    onClick={(e) => handleClick(e, x.metaData, x.fromShare)}
-                                >
-                                    <MoreVertIcon />
-                                </IconButton>
-                                <Menu
-                                    id="video-actions"
-                                    anchorEl={anchorEl}
-                                    keepMounted
-                                    open={open}
-                                    onClose={handleClose}
-                                    PaperProps={{
-                                        style: {
-                                            maxHeight: ITEM_HEIGHT * 4.5,
-                                            width: '22ch'
-                                        },
-                                    }}
-                                >
-                                    {getOptions().map((option) => (
-                                        <MenuItem key={option} selected={option === 'Edit'} onClick={() => handleMenu(option)}>
-                                            {option}
-                                        </MenuItem>
-                                    ))}
-                                </Menu>
-                            </div>
-                        </Toolbar>
-                    </div>
-                ))}
-            </Toolbar>
-            {canLoadMore() &&
-                <div style={{ display: 'flex', justifyContent: 'center' }}>
-                    <Button disabled={loadingMore} onClick={loadMore}>Show More</Button>
+                    }
                 </div>
             }
-        </div>
+            {(noResults) &&
+                <div style={{ display: 'flex', alignItems: 'center', justifyItems: 'center', paddingLeft: !props.isMobile ? 20 : 0, height: '80vh', width: 'calc(100%-20)' }}>
+                    <div style={{ width: '100%', textAlign: 'center' }}>
+                        <Typography variant="h5">
+                            <IconButton color="primary" onClick={() => { history.push('/publish') }}><PublishIcon />Upload</IconButton>
+                        </Typography>
+                        <Typography variant="h5">No Results Found.</Typography>
+                    </div>
+                </div>
+            }
+        </Fragment>
     );
 }

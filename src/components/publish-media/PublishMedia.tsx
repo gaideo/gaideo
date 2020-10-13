@@ -5,7 +5,6 @@ import Stepper from '@material-ui/core/Stepper';
 import Step from '@material-ui/core/Step';
 import StepLabel from '@material-ui/core/StepLabel';
 import Button from '@material-ui/core/Button';
-import Typography from '@material-ui/core/Typography';
 import { TextField, FormControl, Box, FormHelperText } from '@material-ui/core';
 import Dropzone from '../dropzone/Dropzone';
 import { MediaMetaData } from '../../models/media-meta-data';
@@ -21,7 +20,7 @@ import { Photo } from '../../models/photo';
 import { ImagesLoadedCallback, UpdateProgressCallback, VideosLoadedCallback } from '../../models/callbacks';
 import { readBinaryFile } from '../../utilities/file-utils';
 import { FileEntry } from '../../models/file-entry';
-import { computeNameFromImageFile, encryptVideo } from '../../utilities/ffmpeg-utils';
+import { computeNameFromImageFile, convertVideoToHls } from '../../utilities/ffmpeg-utils';
 import { FileOperation } from '../../models/file-operation';
 
 interface ParamTypes { id: string; type: string }
@@ -80,7 +79,7 @@ export default function PublishVideo(props: PublishVideoProps) {
     const onFilesAdded = (files: any) => {
         setFiles(files);
     }
-
+    
     const getStepContent = (step: number) => {
         switch (step) {
             case 0:
@@ -195,6 +194,7 @@ export default function PublishVideo(props: PublishVideoProps) {
         }
         return lname.endsWith('.mp4')
             || lname.endsWith('.mov')
+            || lname.endsWith('.mkv')
             || lname.endsWith('.avi');
     }
 
@@ -233,6 +233,7 @@ export default function PublishVideo(props: PublishVideoProps) {
                     && !unencryptedVideo
                     && !previewImage
                     && !imageName) {
+                    errorMessage = "Unrecognized file type.  Supported file types are: .mp4, .mov, .avi, .mkv, .m3u8, .ts, key.bin, .jpg, .jpeg, and .png";
                     hasError = true;
                     break;
                 }
@@ -542,7 +543,7 @@ export default function PublishVideo(props: PublishVideoProps) {
             setUploading(true);
             try {
                 if (metaData.type === UnencryptedVideosType) {
-                    let encryptResult = await encryptVideo(metaData, files[0], props.isMobile, props.updateProgressCallback);
+                    let encryptResult = await convertVideoToHls(metaData, files[0], props.isMobile, true, props.updateProgressCallback);
                     if (encryptResult.metaData && encryptResult.hlsFiles) {
                         await saveVideoFiles(userSession, encryptResult.metaData, encryptResult.hlsFiles);
                     }
@@ -733,12 +734,6 @@ export default function PublishVideo(props: PublishVideoProps) {
             <div>
                 {activeStep === steps.length ? (
                     <div>
-                        <Typography className={classes.instructions}>
-                            Publish completed - Do you want to publish another video?
-                        </Typography>
-                        <Button onClick={handleReset} className={classes.button}>
-                            Publish Another Video
-                        </Button>
                     </div>
                 ) : (
                         <div style={{ paddingLeft: 10 }}>

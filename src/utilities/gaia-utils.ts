@@ -8,6 +8,9 @@ import { Group, GroupEntry } from "../models/group";
 import { FileOperation } from "../models/file-operation";
 import { FileEntry } from "../models/file-entry";
 import { FileMetaData } from "../models/file-meta-data";
+import { SavedSearch } from "../models/saved-search";
+import { SimpleTokenizer, StopWordsTokenizer } from "js-search";
+import { stemmer } from "./porter-stemmer";
 
 export async function getPublicKey(userData: UserData, userName: string | null | undefined) {
     let publicKey;
@@ -270,6 +273,126 @@ export async function createIndexID(publicKey: string, index: string, userName: 
     return id;
 }
 
+function getSearchTokens(text: string, minRelevant: number) {
+    const tokenizer = new StopWordsTokenizer(new SimpleTokenizer());
+    const tokens = tokenizer.tokenize(text);
+    const ret: string[] = [];
+    const stemmerFunc = stemmer();
+    tokens.forEach(x => {
+        if (x.length >= minRelevant) {
+
+            ret.push(stemmerFunc(x.toLowerCase()));
+        }
+    })
+    return ret;
+}
+
+function getSearchHashes(searchText: string, type: string) {
+    const minRelevant = 3;
+    const maxHashLength = 9;
+    const tokens = getSearchTokens(searchText, minRelevant);
+    const hashMap: any = {};
+    for (let i = 0; i < tokens?.length; i++) {
+        const t = tokens[i];
+        for (let j = minRelevant-1; j < t.length; j++) {
+            let idBuffer: Buffer;
+            if (j < maxHashLength) {
+                const x = `${type}_${t.substring(0, j+1)}`;
+                idBuffer = new TextEncoder().encode(x) as Buffer;
+            }
+            else {
+                break;
+            }
+            const hashToken = publicKeyToAddress(idBuffer);
+            hashMap[hashToken] = true;
+        }
+    }
+    const hashTokens: string[] = [];
+    for (let key in hashMap) {
+        hashTokens.push(key);
+    }
+    return hashTokens;
+}
+
+export async function getCacheEntriesFromSearch(
+    db: IDBPDatabase<unknown>,
+    type: string,
+    searchText: string,
+    max: number | null,
+    cacheResults: CacheResults | null
+) {
+    let allEntries: CacheEntry[] = [];
+    let nextIndex: IDBValidKey | null = null;
+    if (!cacheResults?.allEntries) {
+        const hashTokens = getSearchHashes(searchText, type);
+        const cacheids: any = {}
+        for (let i=0; i<hashTokens.length; i++) {
+            const hashid = hashTokens[i];
+            let cursor = await db.transaction('searchable-hashes').store.index('hashid').openCursor(IDBKeyRange.only(hashid));
+            while (cursor) {
+                if (cursor.value && cursor.value.cacheid) {
+                    cacheids[cursor.value.cacheid] = true;
+                }
+                cursor = await cursor.continue();
+            }
+        }
+        for (let key in cacheids) {
+            const entry = await db.get('cached-indexes', key);
+            if (entry) {
+                allEntries.push(entry);
+            }
+
+        }
+
+        allEntries.sort((x, y) => {
+            if (!x && y) {
+                return 1;
+            }
+            else if (x && !y) {
+                return -1;
+            }
+            else if (x.lastUpdated < y.lastUpdated) {
+                return 1;
+            }
+            else if (x.lastUpdated > y.lastUpdated) {
+                return -1;
+            }
+            else {
+                return 0;
+            }
+        })    
+    }
+    else {
+        allEntries = cacheResults.allEntries;
+    }
+    let count = 0;
+    let cacheEntries: CacheEntry[] = [];
+    let startIndex = 0;
+    if (cacheResults?.nextKey) {
+        const idx = cacheResults.nextKey as number;
+        if (idx > 0) {
+            startIndex = idx;
+        }
+    }
+    while (startIndex < allEntries.length) {
+        cacheEntries.push(allEntries[startIndex]);
+        count++;
+        startIndex++;
+        if (max != null && count >= max) {
+            if (startIndex < allEntries.length) {
+                nextIndex = startIndex;
+            }
+            break;
+        }
+    }
+    return {
+        cacheEntries: cacheEntries,
+        nextKey: nextIndex,
+        nextPrimaryKey: nextIndex,
+        allEntries: allEntries
+    }
+}
+
 export async function getCacheEntriesFromGroup(
     userSession: UserSession,
     db: IDBPDatabase<unknown>,
@@ -478,27 +601,32 @@ export async function getEncryptedFile(
     id: string,
     type: string,
     owner: string | undefined = undefined) {
-    let content: string | ArrayBuffer | undefined = undefined;
-    let userData = userSession.loadUserData();
-    let userName: string | undefined = undefined;
-    if (userData.username !== owner) {
-        userName = owner;
-    }
-    let shareRootInfo = await getShareRootInfo(userData, true, userName);
-    let privateKey = await getPrivateKey(shareRootInfo.root, userSession, id, type, userName);
-    if (privateKey) {
-        let encryptedContent = await userSession.getFile(fileName, {
-            decrypt: false,
-            username: userName
-        }) as string;
-        if (encryptedContent) {
-            content = await userSession.decryptContent(encryptedContent, {
-                privateKey: privateKey
-            });
+    let content: string | ArrayBuffer | null = null;
+    try {
+        let userData = userSession.loadUserData();
+        let userName: string | undefined = undefined;
+        if (userData.username !== owner) {
+            userName = owner;
+        }
+        let shareRootInfo = await getShareRootInfo(userData, true, userName);
+        let privateKey = await getPrivateKey(shareRootInfo.root, userSession, id, type, userName);
+        if (privateKey) {
+            let encryptedContent = await userSession.getFile(fileName, {
+                decrypt: false,
+                username: userName
+            }) as string;
+            if (encryptedContent) {
+                content = await userSession.decryptContent(encryptedContent, {
+                    privateKey: privateKey
+                });
+            }
+        }
+        if (!content) {
+            content = await userSession.getFile(fileName);
         }
     }
-    if (!content) {
-        content = await userSession.getFile(fileName);
+    catch {
+
     }
     return content;
 }
@@ -849,5 +977,65 @@ export async function removeFromGroup(fileEntries: FileMetaData[], userSession: 
             delete groupIndex[indexFile];
         }
         await saveGroupIndex(userSession, groupid, groupIndex);
+    }
+}
+
+export async function getSavedSearches(userSession: UserSession) {
+    let savedSearches: any = {};
+    let missingFile = false;
+    try {
+        let json = await userSession?.getFile("saved-search-index", {
+            decrypt: true,
+            verify: true
+        }) as string;
+        if (json) {
+            savedSearches = JSON.parse(json);
+        }
+    }
+    catch {
+        missingFile = true;
+    }
+    if (missingFile) {
+        try {
+            await userSession.putFile("saved-search-index", JSON.stringify(savedSearches), {
+                encrypt: true,
+                wasString: true,
+                sign: true
+            });
+        }
+        catch {
+
+        }
+    }
+    return savedSearches;
+}
+
+export async function updateSavedSearch(userSession: UserSession, savedSearch: SavedSearch, deleteFlag: boolean = false) {
+    let savedSearches = await getSavedSearches(userSession);
+    let modified = false;
+    if (savedSearches) {
+        if (deleteFlag) {
+            if (savedSearches[savedSearch.hashId]) {
+                delete savedSearches[savedSearch.hashId];
+                modified = true;
+            }
+        }
+        else {
+            savedSearches[savedSearch.hashId] = savedSearch;
+            modified = true;
+        }
+    }
+    if (modified) {
+        try {
+            await userSession.putFile("saved-search-index", JSON.stringify(savedSearches), {
+                encrypt: true,
+                wasString: true,
+                sign: true
+            });
+
+        }
+        catch {
+
+        }
     }
 }

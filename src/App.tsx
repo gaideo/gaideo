@@ -26,7 +26,7 @@ export default function App() {
 
 
   const initDatabase = async () => {
-    let ret = await openDB("gaideodb", 1, {
+    let ret = await openDB("gaideodb", 2, {
       upgrade(db, oldVersion, newVersion, transaction) {
         if (!oldVersion || oldVersion < 1) {
           const cachedIndexesStore = db.createObjectStore('cached-indexes', {
@@ -34,6 +34,13 @@ export default function App() {
           });
           cachedIndexesStore.createIndex('section', 'section');
           cachedIndexesStore.createIndex('lastUpdated', 'lastUpdated');
+        }
+        if (oldVersion < 2) {
+          const searchableHashesStore = db.createObjectStore('searchable-hashes', {
+            keyPath: 'id',
+          });
+          searchableHashesStore.createIndex('hashid', 'hashid');
+          searchableHashesStore.createIndex('cacheid', 'cacheid');
         }
       },
       blocked() {
@@ -68,7 +75,7 @@ export default function App() {
             break;
           case "loadcomplete":
             if (e.data.addedCount > 0 && !e.data.hasExisting) {
-              window.location.reload();
+              //window.location.reload();
             }
             break;
           case "cacheindexescomplete":

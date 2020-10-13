@@ -96,7 +96,6 @@ export function Playlists(props: PlaylistsProps) {
     const saveSelectedPlaylistCallback = props.saveSelectedPlaylistCallback;
 
     const updatePlaylistCallback = useCallback(async (playlist: Group, deleteFlag: boolean, id: string | undefined) => {
-        console.log('update playlist');
         if (userSession?.isUserSignedIn()) {
             await updateGroup(userSession, playlist, deleteFlag);
             let updated = await getGroups(userSession);
@@ -137,7 +136,7 @@ export function Playlists(props: PlaylistsProps) {
 
     }, [userSession, updatePlaylistCallback]);
 
-    const filterFriends = async (inputValue: string) => {
+    const filterPlaylists = async (inputValue: string) => {
         let playlists: any = await getGroups(userSession);
         let options: any[] = [];
         for (let key in playlists) {
@@ -170,7 +169,7 @@ export function Playlists(props: PlaylistsProps) {
     }
     const promiseOptions = (inputValue: string) =>
         new Promise(resolve => {
-            resolve(filterFriends(inputValue));
+            resolve(filterPlaylists(inputValue));
         });
 
     const animatedComponents = makeAnimated();

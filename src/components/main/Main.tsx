@@ -5,6 +5,7 @@ import PublishIcon from '@material-ui/icons/PublishOutlined';
 import MovieIcon from '@material-ui/icons/MovieOutlined';
 import EncryptIcon from '@material-ui/icons/EnhancedEncryptionOutlined';
 import ContactIcon from '@material-ui/icons/ContactMailOutlined';
+import SearchIcon from '@material-ui/icons/Search';
 import CameraEnhanceOutlinedIcon from '@material-ui/icons/CameraEnhanceOutlined';
 import { useConnect } from '@blockstack/connect';
 import { UserData } from 'blockstack/lib/auth/authApp';
@@ -29,6 +30,7 @@ import ProfileDialog from '../profile-dialog/ProfileDialog';
 import ConfirmDialog from '../confirm-dialog/ConfirmDialog';
 import { listFiles, saveSelectedShares, saveSelectedGroup } from '../../utilities/gaia-utils';
 import { Playlists } from '../playlists/Playlists';
+import { Search } from '../search/Search';
 
 const drawerWidth = 240;
 
@@ -60,6 +62,7 @@ export default function Main(props: MainProps) {
     const [profileOpen, setProfileOpen] = useState(false);
     const [confirmResetCacheOpen, setConfirmResetCacheOpen] = React.useState(false);
     const [confirmDeleteAllOpen, setConfirmDeleteAllOpen] = React.useState(false);
+    const [searchText, setSearchText] = React.useState('')
 
     const useStyles = makeStyles((theme) => ({
         drawer: {
@@ -113,6 +116,7 @@ export default function Main(props: MainProps) {
     const [showClose, setShowClose] = useState(false);
     const [showFriends, setShowFriends] = useState(false);
     const [showPlaylists, setShowPlaylists] = useState(false);
+    const [showSearch, setShowSearch] = useState(false);
 
     if (!publishSelected && isPublish) {
         setPublishSelected(true);
@@ -177,6 +181,11 @@ export default function Main(props: MainProps) {
         setAnchorEl(null);
     }
 
+    const isInWebView = () => {
+        const w: any = window;
+        return w.webkit && w.webkit.messageHandlers && w.webkit.messageHandlers.gaideoMessageHandler;
+    }
+
     const handleMenu = (option: string) => {
         if (option === 'logout') {
             userSession?.signUserOut();
@@ -185,10 +194,12 @@ export default function Main(props: MainProps) {
         else if (option === 'friends') {
             setShowFriends(true);
             setShowPlaylists(false);
+            setShowSearch(false);
         }
         else if (option === 'playlists') {
             setShowPlaylists(true);
             setShowFriends(false);
+            setShowSearch(false);
         }
         else if (option === 'profile') {
             setProfileOpen(true);
@@ -199,8 +210,11 @@ export default function Main(props: MainProps) {
         else if (option === 'deleteall') {
             setConfirmDeleteAllOpen(true)
         }
-        else if (option === 'listfiles') {
-            if (userSession) {
+        else if (option === 'appfunction') {
+            if (isInWebView()) {
+                document.location.reload();
+            }
+            else if (userSession?.isUserSignedIn()) {
                 listFiles(userSession);
             }
         }
@@ -209,12 +223,12 @@ export default function Main(props: MainProps) {
 
     const navigateContent = (name: string) => {
         let path: string = '/videos/browse';
-        setPublishSelected(name === "Publish")
+        setPublishSelected(name === "Upload")
         setEncryptSelected(name === "Encrypt Videos");
         setContactUsSelected(name === "Contact Us");
         setVideosSelected(name === "Videos")
 
-        if (name === "Publish") {
+        if (name === "Upload") {
             path = '/publish';
         }
         else if (name === "Photos") {
@@ -264,6 +278,10 @@ export default function Main(props: MainProps) {
         setShowPlaylists(show);
     }, []);
 
+    const showSearchCallback = useCallback((show: boolean) => {
+        setShowSearch(show);
+    }, []);
+
     const updateProgressCallback = useCallback((message: string | null, subMessage: string | null) => {
         setProgressMessage(message);
         setProgressSubMessage(subMessage);
@@ -294,6 +312,12 @@ export default function Main(props: MainProps) {
         setVideos(new Array<BrowseEntry>());
         setPhotos(new Array<Photo>());
     }, [userSession]);
+
+    const setSearchTextCallback = useCallback((text: string) => {
+        setSearchText(text);
+        setVideos(new Array<BrowseEntry>());
+        setPhotos(new Array<Photo>());
+    }, [])
 
     const resetCachedIndexes = async () => {
         try {
@@ -345,7 +369,7 @@ export default function Main(props: MainProps) {
         <div>
             <div>
                 <Divider />
-                <List>
+                <List style={{paddingTop: 0}}>
                     <ListItem button selected={videosSelected} onClick={() => { navigateContent("Videos") }}>
                         <MovieIcon style={{ paddingRight: 5 }} />
                         <ListItemText primary={"Videos"} />
@@ -354,9 +378,9 @@ export default function Main(props: MainProps) {
                         <CameraEnhanceOutlinedIcon style={{ paddingRight: 5 }} />
                         <ListItemText primary={"Photos"} />
                     </ListItem>
-                    <ListItem button selected={publishSelected} onClick={() => { navigateContent("Publish") }}>
+                    <ListItem button selected={publishSelected} onClick={() => { navigateContent("Upload") }}>
                         <PublishIcon style={{ paddingRight: 5 }} />
-                        <ListItemText primary={"Publish"} />
+                        <ListItemText primary={"Upload"} />
                     </ListItem>
                 </List>
                 <Divider />
@@ -387,6 +411,8 @@ export default function Main(props: MainProps) {
             },
         }),
     )(LinearProgress);
+
+    const appfuncTitle =  isInWebView() ? "Refresh" : "List Files";
 
     const appBar = (
         <AppBar style={{ visibility: browseImagesRoute && slideShowIndex != null ? 'hidden' : undefined, backgroundColor: '#d4e3ea', color: 'rgba(0,0,0,.87)' }} position='fixed'>
@@ -485,7 +511,13 @@ export default function Main(props: MainProps) {
                 {
                     userSession?.isUserSignedIn() ?
                         (
-                            <div>
+                            <div style={{display: 'flex', flexDirection:'row'}}>
+                                <IconButton
+                                    color="inherit"
+                                    onClick={() => { setShowSearch(true); setShowFriends(false); setShowPlaylists(false);}}
+                                    style={{ paddingTop: 0, paddingBottom: 0, paddingLeft: 10, paddingRight: 10, minWidth: 40 }}>
+                                    <SearchIcon/>
+                                </IconButton>
                                 <IconButton
                                     onClick={handleClick}
                                     color="inherit"
@@ -518,7 +550,7 @@ export default function Main(props: MainProps) {
                                     <MenuItem onClick={() => { handleMenu("playlists") }}>Playlists</MenuItem>
                                     <MenuItem onClick={() => { handleMenu("resetcache") }}>Reset Cache</MenuItem>
                                     <MenuItem onClick={() => { handleMenu("deleteall") }}>Delete All Data</MenuItem>
-                                    <MenuItem onClick={() => { handleMenu("listfiles") }}>List Files</MenuItem>
+                                    <MenuItem onClick={() => { handleMenu("appfunction") }}>{appfuncTitle}</MenuItem>
                                     <MenuItem onClick={() => { handleMenu("logout") }}>Logout</MenuItem>
                                 </Menu>
                             </div>
@@ -555,6 +587,7 @@ export default function Main(props: MainProps) {
                     <div style={{ paddingTop: browseImagesRoute && slideShowIndex != null ? 0 : 18, paddingLeft: 0, paddingRight: 0 }}>
                         <Friends show={showFriends} showCallback={showFriendsCallback} isMobile={isMobile} saveSelectedFriendsCallback={saveSelectedFriendsCallback} />
                         <Playlists show={showPlaylists} showCallback={showPlaylistsCallback} isMobile={isMobile} saveSelectedPlaylistCallback={saveSelectedPlaylistCallback} />
+                        <Search show={showSearch} showCallback={showSearchCallback} isMobile={isMobile} setSearchTextCallback={setSearchTextCallback} />
 
                         <Switch>
                             <Route path="/videos/show/:id/:owner">
@@ -573,7 +606,9 @@ export default function Main(props: MainProps) {
                                             videosLoadedCallback={videosLoadedCallback}
                                             db={props.db}
                                             worker={props.worker}
-                                            updateProgressCallback={updateProgressCallback} />
+                                            updateProgressCallback={updateProgressCallback}
+                                            isMobile={isMobile}
+                                            searchText={searchText} />
                                     </div>
                                 ) : (
                                         <Welcome />
@@ -592,7 +627,8 @@ export default function Main(props: MainProps) {
                                         db={props.db}
                                         worker={props.worker}
                                         isMobile={isMobile}
-                                        updateProgressCallback={updateProgressCallback} />
+                                        updateProgressCallback={updateProgressCallback} 
+                                        searchText={searchText}/>
                                     </div>
                                 ) : (
                                         <Welcome />

@@ -1,12 +1,24 @@
 
-importScripts("/scripts/blockstack/blockstack.js", "/scripts/idb/index-min.js");
+importScripts("/scripts/blockstack/blockstack.js", "/scripts/idb/index-min.js", "/scripts/js-search/porter-stemmer.js", "/scripts/js-search/js-search.min.js");
+
+const getSearchTokens = (text, minRelevant) => {
+    const tokenizer = new JsSearch.StopWordsTokenizer(new JsSearch.SimpleTokenizer());
+    const tokens = tokenizer.tokenize(text);
+    const ret = [];
+    tokens.forEach(x => {
+        if (x.length >= minRelevant) {
+            ret.push(stemmer(x.toLowerCase()));
+        }
+    })
+    return ret;
+}
 
 const initializeDatabase = async () => {
     let ret = true;
     if (!self.db) {
-        self.db = await idb.openDB('gaideodb', 1, {
+        self.db = await idb.openDB('gaideodb', 2, {
             upgrade(db, oldVersion, newVersion, transaction) {
-                if (!oldVersion || oldVersion < 1) {
+                if (!oldVersion || oldVersion < 2) {
                     ret = false;
                 }
             },
@@ -202,7 +214,7 @@ const updateCachedIndex = async (indexFile, pk) => {
         let id = getIDFromIndexFileName(indexFile);
         let type = getTypeFromIndexFileName(indexFile);
         if (id) {
-            let privateKey = await getPrivateKey(userSession, ownerPublicKey, id, type);
+            let privateKey = await getPrivateKey(userSession, id, type);
             if (privateKey) {
                 let json = await userSession.getFile(indexFile, {
                     decrypt: privateKey
@@ -216,6 +228,7 @@ const updateCachedIndex = async (indexFile, pk) => {
                     lastUpdated: metaData.lastUpdatedUTC
                 }
                 await db.put('cached-indexes', cachedIndex);
+                await updateSearchHashes(indexID, metaData, true);
                 return true;
             }
         }
@@ -233,6 +246,54 @@ const addIndexesToCache = async (indexFiles) => {
         return true;
     }
     return false;
+}
+
+const udpateSearchHashesForText = async (cacheid, text, type) => {
+    const maxHashLength = 9;
+    const minRelevant = 3;
+    const tokens = getSearchTokens(text, minRelevant);
+    for (let i = 0; i < tokens?.length; i++) {
+        const t = tokens[i];
+        for (let j = minRelevant-1; j < t.length; j++) {
+            let idBuffer;
+            if (j < maxHashLength) {
+                const x = `${type}_${t.substring(0, j+1)}`;
+                idBuffer = new TextEncoder().encode(x);
+            }
+            else {
+                break;
+            }
+            const hashToken = blockstack.publicKeyToAddress(idBuffer);
+            idBuffer = new TextEncoder().encode(`${cacheid}_${hashToken}`);
+            const searchHashId = blockstack.publicKeyToAddress(idBuffer);
+            let searchEntry = {
+                id: searchHashId,
+                hashid: hashToken,
+                cacheid: cacheid
+            };
+            await db.put('searchable-hashes', searchEntry);
+        }
+    }
+}
+
+const updateSearchHashes = async (cacheid, metaData, isUpdate) => {
+    if (isUpdate) {
+        const deleteKeys = [];
+        let cursor = await db.transaction('searchable-hashes').store.index('cacheid').openCursor(IDBKeyRange.only(cacheid));
+        while (cursor) {
+            deleteKeys.push(cursor.primaryKey);
+            cursor = await cursor.continue();
+        }
+        for (let i = 0; i < deleteKeys.length; i++) {
+            await db.delete('searchable-hashes', deleteKeys[i]);
+        }
+    }
+    await udpateSearchHashesForText(cacheid, metaData.title, metaData.type);
+    if (metaData.keywords && metaData.keywords.length > 0) {
+        for (let i=0; i<metaData.keywords.length; i++) {
+            await udpateSearchHashesForText(cacheid, metaData.keywords[i], metaData.type);
+        }
+    }
 }
 
 const saveGaiaIndexesToCache = async (userName) => {
@@ -287,7 +348,6 @@ const saveGaiaIndexesToCache = async (userName) => {
                                 username: userName
                             });
                             let metaData = JSON.parse(json);
-
                             // old format skip
                             if (metaData.mediaType !== null && metaData.mediaType !== undefined) {
                                 continue;
@@ -305,6 +365,8 @@ const saveGaiaIndexesToCache = async (userName) => {
                                 shareName: userName
                             }
                             await db.put('cached-indexes', cachedIndex);
+                            await updateSearchHashes(indexID, metaData, lastProcessed ? true : false);
+
                             ret++;
                         }
                     }

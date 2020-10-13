@@ -1,8 +1,8 @@
 import React, { useEffect, Fragment, useCallback } from 'react';
 import { useConnect } from '@blockstack/connect';
-import { Box, Button } from '@material-ui/core';
+import { Box, Button, Typography, IconButton } from '@material-ui/core';
 import { useHistory } from 'react-router-dom';
-import { addToGroup, getCacheEntries, getCacheEntriesFromGroup, getSelectedGroup, getSelectedShares, removeFromGroup, shareFile } from '../../utilities/gaia-utils';
+import { addToGroup, getCacheEntries, getCacheEntriesFromGroup, getCacheEntriesFromSearch, getSelectedGroup, getSelectedShares, removeFromGroup, shareFile } from '../../utilities/gaia-utils';
 import { deleteImageEntry, ImagesType, loadBatchImages } from '../../utilities/media-utils';
 import Gallery from 'react-photo-gallery';
 import SelectedImage from './SelectedImage';
@@ -14,6 +14,7 @@ import { IDBPDatabase } from 'idb';
 import { ImagesLoadedCallback, UpdateProgressCallback } from '../../models/callbacks';
 import { ShareUserEntry } from '../../models/share-user-entry';
 import { CacheResults } from '../../models/cache-entry';
+import PublishIcon from '@material-ui/icons/Publish';
 
 interface ToggleCloseCallback {
     (): void
@@ -33,6 +34,7 @@ interface BrowseImagesProps {
     worker: Worker | null;
     isMobile: boolean;
     updateProgressCallback: UpdateProgressCallback;
+    searchText: string
 }
 
 const MAX_MORE = 12;
@@ -47,7 +49,7 @@ export function BrowseImages(props: BrowseImagesProps) {
     const [selectedFriends, setSelectedFriends] = React.useState<Array<string> | null>(null);
     const [selectedPlaylist, setSelectedPlaylist] = React.useState<string | null>(null);
     const history = useHistory();
-
+    const [noResults, setNoResults] = React.useState(false);
     const db = props.db;
     const worker = props.worker;
     const imagesLoadedCallback = props.imagesLoadedCallback;
@@ -61,18 +63,24 @@ export function BrowseImages(props: BrowseImagesProps) {
             if (db && userSession?.isUserSignedIn()) {
                 let sp = await getSelectedGroup(userSession);
                 let moreCacheResults;
-                if (sp) {
-                    moreCacheResults = await getCacheEntriesFromGroup(userSession, db, ImagesType, worker, sp, MAX_MORE, null);
+                if (props.searchText && props.searchText.trim().length > 0) {
+                    moreCacheResults = await getCacheEntriesFromSearch(db, ImagesType, props.searchText, MAX_MORE, null);
                 }
                 else {
-                    let sf = await getSelectedShares(userSession);
-                    setSelectedFriends(sf);
-                    moreCacheResults = await getCacheEntries(userSession, db, ImagesType, MAX_MORE, null, sf);
+                    if (sp) {
+                        moreCacheResults = await getCacheEntriesFromGroup(userSession, db, ImagesType, worker, sp, MAX_MORE, null);
+                    }
+                    else {
+                        let sf = await getSelectedShares(userSession);
+                        setSelectedFriends(sf);
+                        moreCacheResults = await getCacheEntries(userSession, db, ImagesType, MAX_MORE, null, sf);
+                    }
+                    setSelectedPlaylist(sp);
                 }
-                setSelectedPlaylist(sp);
                 setIsSelectable(false);
                 if (moreCacheResults.cacheEntries?.length > 0) {
-                    for (let i = 0; i < moreCacheResults.cacheEntries?.length; i+=batchSize) {
+                    setNoResults(false);
+                    for (let i = 0; i < moreCacheResults.cacheEntries?.length; i += batchSize) {
                         if (i === 0) {
                             await trackPromise(loadBatchImages(userSession, i, moreCacheResults.cacheEntries, arr, batchSize, imagesLoadedCallback));
                         }
@@ -87,29 +95,34 @@ export function BrowseImages(props: BrowseImagesProps) {
                         setCacheResults(null);
                     }
                 }
+                else {
+                    setNoResults(true);
+                }
 
             }
         }
         if (photos.length === 0) {
             refresh();
         }
-    }, [userSession, photos, db, imagesLoadedCallback, worker]);
+    }, [userSession, photos, db, imagesLoadedCallback, worker, props.searchText]);
 
     const loadMore = async () => {
         if (userSession && props.db && cacheResults && cacheResults.nextKey && cacheResults.nextPrimaryKey) {
-            console.log('load more');
             try {
                 setLoadingMore(true)
                 let arr: Photo[] = props.photos;
                 let moreCacheResults;
-                if (selectedPlaylist) {
+                if (props.searchText && props.searchText.trim().length > 0) {
+                    moreCacheResults = await getCacheEntriesFromSearch(props.db, ImagesType, props.searchText, MAX_MORE, cacheResults);
+                }
+                else if (selectedPlaylist) {
                     moreCacheResults = await getCacheEntriesFromGroup(userSession, props.db, ImagesType, props.worker, selectedPlaylist, MAX_MORE, cacheResults);
                 }
                 else {
                     moreCacheResults = await getCacheEntries(userSession, props.db, ImagesType, MAX_MORE, cacheResults, selectedFriends);
                 }
                 if (moreCacheResults.cacheEntries?.length > 0) {
-                    for (let i = 0; i < moreCacheResults.cacheEntries?.length; i+=batchSize) {
+                    for (let i = 0; i < moreCacheResults.cacheEntries?.length; i += batchSize) {
                         await loadBatchImages(userSession, i, moreCacheResults.cacheEntries, arr, batchSize, imagesLoadedCallback);
                     }
                 }
@@ -241,12 +254,12 @@ export function BrowseImages(props: BrowseImagesProps) {
             if (fileArray.length > 0
                 && selectedPlaylist
                 && userSession?.isUserSignedIn()) {
-        
+
                 await removeFromGroup(fileArray, userSession, selectedPlaylist);
                 imagesLoadedCallback(newArray);
                 setIsSelectable(false);
             }
-    
+
         }
         trackPromise(removePhotoFromGroup());
     }, [props.photos, imagesLoadedCallback, selectedPlaylist, userSession]);
@@ -291,25 +304,34 @@ export function BrowseImages(props: BrowseImagesProps) {
         }
         return false;
     }
-
     return (
         <Fragment>
-            { props.slideShowIndex != null ? (
+            {noResults &&
+                <div style={{ display: 'flex', alignItems: 'center', justifyItems: 'center', paddingLeft: !props.isMobile ? 20 : 0, height: '80vh', width: 'calc(100%-20)' }}>
+                    <div style={{ width: '100%', textAlign: 'center' }}>
+                        <Typography variant="h5">
+                            <IconButton color="primary" onClick={() => { history.push('/publish') }}><PublishIcon />Upload</IconButton></Typography>
+                        <Typography variant="h5">No Results Found.</Typography>
+                    </div>
+                </div>
+            }
+            {(props.photos && props.photos.length > 0 && props.slideShowIndex !== null) &&
                 <SlideShow
                     images={props.photos}
                     current={props.slideShowIndex}
                     closeSlideShowCallback={closeSlideShowCallback}
                 />
-            ) : (
-                    <div style={{ paddingLeft: !props.isMobile ? 22 : 0 }}>
-                        <Gallery photos={props.photos} direction={"row"} renderImage={imageRenderer} />
-                        {canLoadMore() &&
-                            <div style={{ display: 'flex', justifyContent: 'center' }}>
-                                <Button disabled={loadingMore} onClick={loadMore}>Show More</Button>
-                            </div>
-                        }
-                    </div>
-                )}
+            }
+            {(props.photos && props.photos.length > 0 && props.slideShowIndex === null) &&
+                <div style={{ paddingLeft: !props.isMobile ? 22 : 0 }}>
+                    <Gallery photos={props.photos} direction={"row"} renderImage={imageRenderer} />
+                    {canLoadMore() &&
+                        <div style={{ display: 'flex', justifyContent: 'center' }}>
+                            <Button disabled={loadingMore} onClick={loadMore}>Show More</Button>
+                        </div>
+                    }
+                </div>
+            }
         </Fragment>
     );
 }

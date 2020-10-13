@@ -148,7 +148,21 @@ export async function runFFMpegWorker(
     return result;
 }
 
+function supportsSharedArrayBuffer() {
+    try {
+        new SharedArrayBuffer(10);
+        return true;
+    }
+    catch {
+
+    }
+    return false;
+}
+
 export async function canRunWebAssembly() {
+    if (!supportsSharedArrayBuffer()) {
+        return false;
+    }
     try {
         let str = localStorage.getItem("CanRunWebAssembly");
         if (str === 'true') {
@@ -186,7 +200,7 @@ function getArgsFromInput(input: FFMpegInput): string[] {
         case FFMpegInputType.Hls:
             if (input.dimensions) {
                 return ["-y", "-i", `${input.file.name}`,
-                    "-c:v", "libx264", "-profile:v", "high", "-level", "4.2", "-crf", "20",
+                    "-c:v", "libx264", "-profile:v", "high10", "-level", "4.2", "-crf", "20",
                     "-g", "48", "-keyint_min", "48",
                     "-vf", `scale=-1:${input.dimensions.height}`, "-start_number", "0",
                     "-hls_time", "4", "-hls_list_size", "0", "-f", "hls",
@@ -278,10 +292,11 @@ const computePreviewFileName = (videoFileName: string) => {
     return `${computeNameFromImageFile(videoFileName)}_preview.jpg`;
 }
 
-export async function encryptVideo(
+export async function convertVideoToHls(
     inputMetaData: MediaMetaData,
     file: any,
     isMobile: boolean,
+    encrypt: boolean,
     updateProgress: UpdateProgressCallback): Promise<FFMpegEncryptResult> {
     let metaData: MediaMetaData = { ...inputMetaData, previewImageName: undefined };
     let hlsFiles: FFMpegFile[] = [];
@@ -296,8 +311,8 @@ export async function encryptVideo(
     const timeRegex = /\s+time=([0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{2,})/g
 
     let gettingDimensions = false;
-    let encrypting = false;
-    let encryptingMessage = `Encrypting video.  This may take a while depending on the size...`;
+    let encoding = false;
+    let encodingMessage = `${encrypt ? "Encrypting" : "Encoding"} video.  This may take a while depending on the size...`;
 
     const handleLogMessage = (e: any) => {
         if (gettingDimensions) {
@@ -332,23 +347,25 @@ export async function encryptVideo(
                 }
             }
         }
-        else if (encrypting && e.message?.indexOf("frame=") >= 0) {
+        else if (encoding && e.message?.indexOf("frame=") >= 0) {
             const timeResult = timeRegex.exec(e.message);
             if (timeResult?.length === 2 && duration) {
-                updateProgress(encryptingMessage, `Current time: ${timeResult[1]}, Duration: ${duration}`);
+                updateProgress(encodingMessage, `Current time: ${timeResult[1]}, Duration: ${duration}`);
             }
         }
     }
 
     let ffmpeg: any;
-    if (!isMobile && canRunWebAssembly()) {
-
-        ffmpeg = createFFmpeg({
-            corePath: "/scripts/workers/ffmpeg-core.js",
-            log: true,
-            logger: handleLogMessage
-        });
-        await ffmpeg.load();
+    if (!isMobile) {
+        const canRun = await canRunWebAssembly();
+        if (canRun) {
+            ffmpeg = createFFmpeg({
+                corePath: "/scripts/workers/ffmpeg-core.js",
+                log: true,
+                logger: handleLogMessage
+            });
+            await ffmpeg.load();
+        }
     }
 
     if (inputMetaData.previewImageName) {
@@ -421,8 +438,8 @@ export async function encryptVideo(
                 if (!dimensions || !dimensions.height || !dimensions.width) {
                     throw Error("Unable to determine size of the input video.")
                 }
-                encrypting = true;
-                updateProgress(encryptingMessage, null);
+                encoding = true;
+                updateProgress(encodingMessage, null);
                 result = await runFFMeg({
                     file: file,
                     fileData: data,
@@ -433,16 +450,18 @@ export async function encryptVideo(
                     keyInfoData: keyInfoData,
                     ffmpeg: ffmpeg
                 }, handleLogMessage);
-                encrypting = false;
+                encoding = false;
                 if (!result.error) {
                     memfs = result.result?.MEMFS;
                     if (memfs?.length > 0) {
                         for (let i = 0; i < memfs.length; i++) {
                             if (memfs[i].name.endsWith(".m3u8")) {
                                 let masterData = Buffer.from(memfs[i].data);
-                                let masterText = masterData.toString("utf-8");
-                                masterText = masterText.replace("#EXT-X-MEDIA-SEQUENCE:0", `#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-KEY:METHOD=AES-128,URI="key.bin",IV=0x${ivHexData}`)
-                                masterData = Buffer.from(masterText, "utf-8");
+                                if (encrypt) {
+                                    let masterText = masterData.toString("utf-8");
+                                    masterText = masterText.replace("#EXT-X-MEDIA-SEQUENCE:0", `#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-KEY:METHOD=AES-128,URI="gaideo://gaideo.com/key.bin",IV=0x${ivHexData}`)
+                                    masterData = Buffer.from(masterText, "utf-8");
+                                }
                                 hlsFiles.push({
                                     name: "master.m3u8",
                                     data: masterData
@@ -450,10 +469,12 @@ export async function encryptVideo(
                             }
                             else {
                                 let segmentData = Buffer.from(memfs[i].data);
-                                let encryptedData = await encryptSegment(keyData, ivData, segmentData);
+                                if (encrypt) {
+                                    segmentData = await encryptSegment(keyData, ivData, segmentData);
+                                }
                                 hlsFiles.push({
                                     name: memfs[i].name,
-                                    data: encryptedData
+                                    data: segmentData
                                 });
                             }
                         }
