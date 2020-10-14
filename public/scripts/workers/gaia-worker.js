@@ -48,6 +48,7 @@ const createMasterIndex = async () => {
             encrypt: true,
             wasString: true,
             sign: true,
+            dangerouslyIgnoreEtag: true
         });
     } catch {
         await userSession.deleteFile('master-index');
@@ -55,6 +56,7 @@ const createMasterIndex = async () => {
             encrypt: true,
             wasString: true,
             sign: true,
+            dangerouslyIgnoreEtag: true
         });
     }
     return masterIndex;
@@ -254,10 +256,10 @@ const udpateSearchHashesForText = async (cacheid, text, type) => {
     const tokens = getSearchTokens(text, minRelevant);
     for (let i = 0; i < tokens?.length; i++) {
         const t = tokens[i];
-        for (let j = minRelevant-1; j < t.length; j++) {
+        for (let j = minRelevant - 1; j < t.length; j++) {
             let idBuffer;
             if (j < maxHashLength) {
-                const x = `${type}_${t.substring(0, j+1)}`;
+                const x = `${type}_${t.substring(0, j + 1)}`;
                 idBuffer = new TextEncoder().encode(x);
             }
             else {
@@ -290,15 +292,14 @@ const updateSearchHashes = async (cacheid, metaData, isUpdate) => {
     }
     await udpateSearchHashesForText(cacheid, metaData.title, metaData.type);
     if (metaData.keywords && metaData.keywords.length > 0) {
-        for (let i=0; i<metaData.keywords.length; i++) {
+        for (let i = 0; i < metaData.keywords.length; i++) {
             await udpateSearchHashesForText(cacheid, metaData.keywords[i], metaData.type);
         }
     }
 }
 
 const saveGaiaIndexesToCache = async (userName) => {
-    let ret = 0;
-    let hasExisting = false;
+    let newCounts = {};
     try {
         let ownerPublicKey = blockstack.getPublicKeyFromPrivate(sessionData.userData.appPrivateKey);;
         let root = '';
@@ -323,7 +324,6 @@ const saveGaiaIndexesToCache = async (userName) => {
                         }
                         if (canAdd) {
                             existingCache[cursor.value.id] = cursor.value.lastUpdated;
-                            hasExisting = true;
                         }
                         cursor = await cursor.continue();
                     }
@@ -366,8 +366,13 @@ const saveGaiaIndexesToCache = async (userName) => {
                             }
                             await db.put('cached-indexes', cachedIndex);
                             await updateSearchHashes(indexID, metaData, lastProcessed ? true : false);
-
-                            ret++;
+                            if (newCounts[metaData.type] > 0) {
+                                const count = newCounts[metaData.type];
+                                newCounts[metaData.type] = count + 1;
+                            }
+                            else {
+                                newCounts[metaData.type] = 1;
+                            }
                         }
                     }
                 }
@@ -396,7 +401,7 @@ const saveGaiaIndexesToCache = async (userName) => {
     catch (error) {
         console.log(error);
     }
-    return [ret, hasExisting];
+    return newCounts;
 }
 
 const initializeUserSession = (e) => {
@@ -505,16 +510,31 @@ self.addEventListener(
                         catch {
                             await createMasterIndex();
                         }
-                        let results = await saveGaiaIndexesToCache();
+                        let newCounts = await saveGaiaIndexesToCache();
+                        if (!newCounts) {
+                            newCounts = {};
+                        }
                         let shares = await getShares();
                         for (key in shares) {
-                            saveGaiaIndexesToCache(key);
+                            shareCounts = await saveGaiaIndexesToCache(key);
+                            if (shareCounts) {
+                                for (type in shareCounts) {
+                                    if (shareCounts[type] > 0) {
+                                        if (newCounts[type] > 0) {
+                                            const count = newCounts[type];
+                                            newCounts[type] = count + shareCounts[type];
+                                        }
+                                        else {
+                                            newCounts[type] = shareCounts[type];
+                                        }
+                                    }
+                                }
+                            }
                         }
                         postMessage({
                             message: 'loadcomplete',
                             result: true,
-                            addedCount: results[0],
-                            hasExisting: results[1]
+                            newCounts: newCounts
                         });
                     }
                     else {
@@ -618,6 +638,11 @@ self.addEventListener(
                         console.log("Unable to delete cached indexes database because all connections could not be closed.")
                     }
                 });
+                try {
+                    await userSession.deleteFile('master-index');        
+                }
+                catch {}
+
                 postMessage({
                     message: "deletedbcomplete",
                     result: true

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, Fragment } from 'react';
-import { makeStyles, Divider, List, ListItem, ListItemText, AppBar, Toolbar, Drawer, Typography, Hidden, IconButton, Button, Menu, MenuItem, CircularProgress, Backdrop, Icon, LinearProgress, withStyles, Theme, createStyles } from "@material-ui/core";
+import { makeStyles, Divider, List, ListItem, ListItemText, AppBar, Toolbar, Drawer, Typography, Hidden, IconButton, Button, Menu, MenuItem, CircularProgress, Backdrop, Icon, LinearProgress, withStyles, Theme, createStyles, Badge } from "@material-ui/core";
 import MenuIcon from '@material-ui/icons/MenuOutlined';
 import PublishIcon from '@material-ui/icons/PublishOutlined';
 import MovieIcon from '@material-ui/icons/MovieOutlined';
@@ -38,8 +38,8 @@ interface SetUserDataCallback {
     (userData: UserData | null): void
 }
 
-interface SetSelectedFriendsCallback {
-    (selectedFriends: Array<any> | undefined | null): void
+interface SetNewCountCallback {
+    (count: number): void
 }
 
 interface MainProps {
@@ -47,6 +47,11 @@ interface MainProps {
     setUserDataCallback: SetUserDataCallback;
     db: IDBPDatabase<unknown> | null;
     worker: Worker | null;
+    newVideosCount: number;
+    setNewVideosCountCallback: SetNewCountCallback;
+    newPhotosCount: number;
+    setNewPhotosCountCallback: SetNewCountCallback;
+
 }
 
 export default function Main(props: MainProps) {
@@ -223,10 +228,14 @@ export default function Main(props: MainProps) {
 
     const navigateContent = (name: string) => {
         let path: string = '/videos/browse';
+        const selVideos = (name === "Videos");
+        const selImages = (name === "Photos");
+
         setPublishSelected(name === "Upload")
         setEncryptSelected(name === "Encrypt Videos");
         setContactUsSelected(name === "Contact Us");
-        setVideosSelected(name === "Videos")
+        setVideosSelected(selVideos)
+        setImagesSelected(selImages);
 
         if (name === "Upload") {
             path = '/publish';
@@ -245,6 +254,14 @@ export default function Main(props: MainProps) {
         }
         if (history.length > 0 && history.location.pathname !== path) {
             history.push(path);
+        }
+        if (selVideos && props.newVideosCount > 0) {
+            props.setNewVideosCountCallback(0);
+            setVideos(new Array<BrowseEntry>());
+        }
+        else if (selImages && props.newPhotosCount > 0) {
+            props.setNewPhotosCountCallback(0);
+            setPhotos(new Array<Photo>());
         }
     }
 
@@ -365,18 +382,36 @@ export default function Main(props: MainProps) {
         }
     }
 
+    const showNewVideos = () => {
+        if (props.newVideosCount > 0) {
+            return true;
+        }
+        return false;
+    }
+
+    const showNewImages = () => {
+        if (props.newPhotosCount > 0) {
+            return true;
+        }
+        return false;
+    }
+
     const drawer = (
         <div>
             <div>
                 <Divider />
-                <List style={{paddingTop: 0}}>
+                <List style={{ paddingTop: 0 }}>
                     <ListItem button selected={videosSelected} onClick={() => { navigateContent("Videos") }}>
                         <MovieIcon style={{ paddingRight: 5 }} />
                         <ListItemText primary={"Videos"} />
+                        <Badge invisible={!showNewVideos()} badgeContent={props.newVideosCount} color="secondary">
+                        </Badge>
                     </ListItem>
                     <ListItem button selected={imagesSelected} onClick={() => { navigateContent("Photos") }}>
                         <CameraEnhanceOutlinedIcon style={{ paddingRight: 5 }} />
                         <ListItemText primary={"Photos"} />
+                        <Badge invisible={!showNewImages()} badgeContent={props.newPhotosCount} color="secondary">
+                        </Badge>
                     </ListItem>
                     <ListItem button selected={publishSelected} onClick={() => { navigateContent("Upload") }}>
                         <PublishIcon style={{ paddingRight: 5 }} />
@@ -412,7 +447,7 @@ export default function Main(props: MainProps) {
         }),
     )(LinearProgress);
 
-    const appfuncTitle =  isInWebView() ? "Refresh" : "List Files";
+    const appfuncTitle = isInWebView() ? "Refresh" : "List Files";
 
     const appBar = (
         <AppBar style={{ visibility: browseImagesRoute && slideShowIndex != null ? 'hidden' : undefined, backgroundColor: '#d4e3ea', color: 'rgba(0,0,0,.87)' }} position='fixed'>
@@ -511,12 +546,12 @@ export default function Main(props: MainProps) {
                 {
                     userSession?.isUserSignedIn() ?
                         (
-                            <div style={{display: 'flex', flexDirection:'row'}}>
+                            <div style={{ display: 'flex', flexDirection: 'row' }}>
                                 <IconButton
                                     color="inherit"
-                                    onClick={() => { setShowSearch(true); setShowFriends(false); setShowPlaylists(false);}}
+                                    onClick={() => { setShowSearch(true); setShowFriends(false); setShowPlaylists(false); }}
                                     style={{ paddingTop: 0, paddingBottom: 0, paddingLeft: 10, paddingRight: 10, minWidth: 40 }}>
-                                    <SearchIcon/>
+                                    <SearchIcon />
                                 </IconButton>
                                 <IconButton
                                     onClick={handleClick}
@@ -618,17 +653,17 @@ export default function Main(props: MainProps) {
                             <Route path="/images/browse">
                                 {userSession?.isUserSignedIn() ? (
                                     <div style={{ paddingTop: !showFriends && !showPlaylists ? 25 : 5 }}>
-                                    <BrowseImages
-                                        photos={photos}
-                                        imagesLoadedCallback={imagesLoadedCallback}
-                                        toggleCloseCallback={toggleCloseCallback}
-                                        slideShowIndex={slideShowIndex}
-                                        setSlideShowIndexCallback={setSlideShowIndexCallback}
-                                        db={props.db}
-                                        worker={props.worker}
-                                        isMobile={isMobile}
-                                        updateProgressCallback={updateProgressCallback} 
-                                        searchText={searchText}/>
+                                        <BrowseImages
+                                            photos={photos}
+                                            imagesLoadedCallback={imagesLoadedCallback}
+                                            toggleCloseCallback={toggleCloseCallback}
+                                            slideShowIndex={slideShowIndex}
+                                            setSlideShowIndexCallback={setSlideShowIndexCallback}
+                                            db={props.db}
+                                            worker={props.worker}
+                                            isMobile={isMobile}
+                                            updateProgressCallback={updateProgressCallback}
+                                            searchText={searchText} />
                                     </div>
                                 ) : (
                                         <Welcome />
@@ -644,8 +679,8 @@ export default function Main(props: MainProps) {
                                         isMobile={isMobile}
                                         videosLoadedCallback={videosLoadedCallback}
                                         imagesLoadedCallback={imagesLoadedCallback}
-                                        updateProgressCallback={updateProgressCallback} 
-                                        />
+                                        updateProgressCallback={updateProgressCallback}
+                                    />
                                 ) : (
                                         <Welcome />
                                     )
@@ -661,7 +696,7 @@ export default function Main(props: MainProps) {
                                         videosLoadedCallback={videosLoadedCallback}
                                         imagesLoadedCallback={imagesLoadedCallback}
                                         updateProgressCallback={updateProgressCallback}
-                                        />
+                                    />
                                 ) : (
                                         <Welcome />
                                     )

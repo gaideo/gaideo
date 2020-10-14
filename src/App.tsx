@@ -74,8 +74,18 @@ export default function App() {
             }
             break;
           case "loadcomplete":
-            if (e.data.addedCount > 0 && !e.data.hasExisting) {
-              //window.location.reload();
+            if (e.data.newCounts) {
+              for (let key in e.data.newCounts) {
+                const count = e.data.newCounts[key];
+                if (count > 0) {
+                  if (key === VideosType) {
+                    setNewVideosCount(count);
+                  }
+                  else if (key === ImagesType) {
+                    setNewPhotosCount(count);
+                  }
+                }
+              }
             }
             break;
           case "cacheindexescomplete":
@@ -97,6 +107,8 @@ export default function App() {
   const [worker, setWorker] = useState<Worker | null>(null);
   const [db, setDB] = useState<IDBPDatabase<unknown> | null>(null);
   const [userData, setUserData] = useState<UserData | null>(null);
+  const [newVideosCount, setNewVideosCount] = useState(0);
+  const [newPhotosCount, setNewPhotosCount] = useState(0);
 
   const themeConfig = createMuiTheme(themeObject);
   const authOptions = {
@@ -130,6 +142,14 @@ export default function App() {
 
   }, [setUserDataCallback, setWorker, initGaiaWorker]);
 
+  const setNewVideosCountCallback = useCallback((count: number) => {
+    setNewVideosCount(count);
+  }, []);
+
+  const setNewPhotosCountCallback = useCallback((count: number) => {
+    setNewPhotosCount(count);
+  }, []);
+
   return (
     <ThemeProvider theme={themeConfig}>
       <Connect authOptions={authOptions}>
@@ -139,7 +159,12 @@ export default function App() {
             userData={userData} 
             setUserDataCallback={setUserDataCallback} 
             db={db} 
-            worker={worker ? worker : null}/>
+            worker={worker ? worker : null}
+            newVideosCount={newVideosCount}
+            setNewVideosCountCallback={setNewVideosCountCallback}
+            newPhotosCount={newPhotosCount}
+            setNewPhotosCountCallback={setNewPhotosCountCallback}
+            />
         </HashRouter>
       </Connect>
     </ThemeProvider>
