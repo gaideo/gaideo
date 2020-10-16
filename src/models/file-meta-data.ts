@@ -10,4 +10,5 @@ export interface FileMetaData {
     createdDateUTC: Date;
     lastUpdatedUTC: Date;
     type: string;
+    isPublic?: boolean;
 }

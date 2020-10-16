@@ -265,13 +265,17 @@ export default function Main(props: MainProps) {
         }
     }
 
-    const imagesLoadedCallback = useCallback((photos: Photo[]) => {
-        setPhotos(photos);
-    }, []);
+    const imagesLoadedCallback = useCallback((newPhotos: Photo[]) => {
+        if (photos.length > 0 || newPhotos.length !== 0) {
+            setPhotos(newPhotos);
+        }
+    }, [photos]);
 
-    const videosLoadedCallback = useCallback((videos: BrowseEntry[]) => {
-        setVideos(videos);
-    }, []);
+    const videosLoadedCallback = useCallback((newVideos: BrowseEntry[]) => {
+        if (videos.length > 0 || newVideos.length !== 0) {
+            setVideos(newVideos);
+        }
+    }, [videos]);
 
     const toggleCloseCallback = useCallback(() => {
         if (showClose) {
@@ -625,7 +629,7 @@ export default function Main(props: MainProps) {
                         <Search show={showSearch} showCallback={showSearchCallback} isMobile={isMobile} setSearchTextCallback={setSearchTextCallback} />
 
                         <Switch>
-                            <Route path="/videos/show/:id/:owner">
+                            <Route path="/videos/show/:access/:id/:owner">
                                 {userSession?.isUserSignedIn() ? (
                                     <VideoPlayer isMobile={isMobile} />
                                 ) : (

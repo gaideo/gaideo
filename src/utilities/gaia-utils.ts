@@ -38,12 +38,18 @@ export function createHashAddress(values: string[]) {
 
 }
 
-const getMasterIndex = async (userSession: UserSession, fileName: string, canCreate: boolean) => {
+const getMasterIndex = async (userSession: UserSession, fileName: string, canCreate: boolean, isPublic: boolean) => {
     let ret = null;
     try {
+        let encrypt = true;
+        let verify = true;
+        if (isPublic) {
+            encrypt = false;
+            verify = false;
+        }
         let json = await userSession.getFile(fileName, {
-            decrypt: true,
-            verify: true
+            decrypt: encrypt,
+            verify: verify
         }) as string;
         if (json) {
             ret = JSON.parse(json);
@@ -69,13 +75,18 @@ export async function getShareRootInfo(
     let ret = '';
     let publicKey;
     if (userName) {
-        if (isReading) {
-            publicKey = getPublicKeyFromPrivate(userData.appPrivateKey);
+        if (userName === 'public') {
+            ret = `share/public/`;
         }
         else {
-            publicKey = await getPublicKey(userData, userName)
+            if (isReading) {
+                publicKey = getPublicKeyFromPrivate(userData.appPrivateKey);
+            }
+            else {
+                publicKey = await getPublicKey(userData, userName)
+            }
+            ret = getUserDirectory(publicKey);
         }
-        ret = getUserDirectory(publicKey);
     }
     else {
         publicKey = getPublicKeyFromPrivate(userData.appPrivateKey);
@@ -103,20 +114,26 @@ export async function updateMasterIndex(
             console.log(msg);
             throw Error(msg);
         }
+        const isPublic = userName === 'public';
         if (fileEntries?.length > 0) {
             let fileName = null;
             let publicFileName = null;
             let userData = userSession.loadUserData();
             let fileRootInfo = await getShareRootInfo(userData, false, userName);
             if (fileRootInfo.root.length > 0) {
-                publicFileName = `${fileRootInfo.root}master-index`;
-                fileName = `${fileRootInfo.root}internal-index`;
+                if (isPublic) {
+                    fileName = `${fileRootInfo.root}master-index`;
+                }
+                else {
+                    publicFileName = `${fileRootInfo.root}master-index`;
+                    fileName = `${fileRootInfo.root}internal-index`;
+                }
             }
             else {
                 fileName = "master-index";
             }
             if (fileName) {
-                let masterIndex = await getMasterIndex(userSession, fileName, operation !== FileOperation.Delete);
+                let masterIndex = await getMasterIndex(userSession, fileName, operation !== FileOperation.Delete, isPublic);
                 if (masterIndex) {
                     let modified = false;
                     const privateLookup: any = {};
@@ -160,9 +177,15 @@ export async function updateMasterIndex(
                         }
                     }
                     if (modified) {
+                        let encrypt = true;
+                        let sign = true;
+                        if (isPublic) {
+                            encrypt = false;
+                            sign = false;
+                        }
                         await userSession.putFile(fileName, JSON.stringify(masterIndex), {
-                            encrypt: true,
-                            sign: true,
+                            encrypt: encrypt,
+                            sign: sign,
                             wasString: true
                         });
                         if (publicFileName && fileRootInfo.publicKey) {
@@ -205,6 +228,18 @@ export async function updateMasterIndex(
                         });
                     }
 
+                }
+            }
+        }
+        if (!userName) {
+            for (let i = 0; i < fileEntries?.length; i++) {
+                if (fileEntries[i].metaData.isPublic) {
+                    if (operation === FileOperation.Add) {
+                        await updateMasterIndex(userSession, gaiaWorker, FileOperation.Share, [fileEntries[i]], 'public');
+                    }
+                    else if (operation === FileOperation.Delete) {
+                        await updateMasterIndex(userSession, gaiaWorker, FileOperation.Unshare, [fileEntries[i]], 'public');
+                    }
                 }
             }
         }
@@ -294,10 +329,10 @@ function getSearchHashes(searchText: string, type: string) {
     const hashMap: any = {};
     for (let i = 0; i < tokens?.length; i++) {
         const t = tokens[i];
-        for (let j = minRelevant-1; j < t.length; j++) {
+        for (let j = minRelevant - 1; j < t.length; j++) {
             let idBuffer: Buffer;
             if (j < maxHashLength) {
-                const x = `${type}_${t.substring(0, j+1)}`;
+                const x = `${type}_${t.substring(0, j + 1)}`;
                 idBuffer = new TextEncoder().encode(x) as Buffer;
             }
             else {
@@ -326,7 +361,7 @@ export async function getCacheEntriesFromSearch(
     if (!cacheResults?.allEntries) {
         const hashTokens = getSearchHashes(searchText, type);
         const cacheids: any = {}
-        for (let i=0; i<hashTokens.length; i++) {
+        for (let i = 0; i < hashTokens.length; i++) {
             const hashid = hashTokens[i];
             let cursor = await db.transaction('searchable-hashes').store.index('hashid').openCursor(IDBKeyRange.only(hashid));
             while (cursor) {
@@ -337,7 +372,11 @@ export async function getCacheEntriesFromSearch(
             }
         }
         for (let key in cacheids) {
-            const entry = await db.get('cached-indexes', key);
+            let entry: CacheEntry | null = null;
+            try {
+                entry = await db.get('cached-indexes', key) as CacheEntry;
+            }
+            catch { }
             if (entry) {
                 allEntries.push(entry);
             }
@@ -360,7 +399,7 @@ export async function getCacheEntriesFromSearch(
             else {
                 return 0;
             }
-        })    
+        })
     }
     else {
         allEntries = cacheResults.allEntries;
@@ -418,7 +457,11 @@ export async function getCacheEntriesFromGroup(
                         uname = undefined;
                     }
                     const id = await createIndexID(publicKey, key, uname);
-                    const entry = await db.get('cached-indexes', id) as CacheEntry;
+                    let entry: CacheEntry | null = null;
+                    try {
+                        entry = await db.get('cached-indexes', id) as CacheEntry;
+                    }
+                    catch { }
                     if (entry) {
                         allEntries.push(entry);
                     }
@@ -505,49 +548,54 @@ export async function getCacheEntries(
     let cacheEntries: CacheEntry[] = [];
     let nextKey: IDBValidKey | null = null;
     let nextPrimaryKey: IDBValidKey | null = null;
-    let shareLookup: any = {};
-    if (shareNames && shareNames.length > 0) {
-        shareNames.forEach(x => {
-            shareLookup[x.toLowerCase()] = true;
-        })
-    }
-    const isMatchCriteria = (cursor: IDBPCursorWithValue<unknown, ["cached-indexes"], "cached-indexes", "lastUpdated"> | null) => {
-        if (cursor && cursor.value.data && cursor.value.section === `${publicKey}_${type}`) {
-            let canAdd = true;
-            let shareName = cursor.value.shareName;
-            if (!shareNames && shareName) {
-                canAdd = false;
-            }
-            else if (shareNames && (!shareName || !shareLookup[shareName])) {
-                canAdd = false;
-            }
-            return canAdd;
+    try {
+        let shareLookup: any = {};
+        if (shareNames && shareNames.length > 0) {
+            shareNames.forEach(x => {
+                shareLookup[x.toLowerCase()] = true;
+            })
         }
-        return false;
-    }
-    while (cursor) {
-        if (isMatchCriteria(cursor)) {
-            cacheEntries.push({
-                data: cursor.value.data,
-                section: cursor.value.section,
-                key: cursor.key,
-                primaryKey: cursor.primaryKey,
-                lastUpdated: cursor.value.lastUpdated
-            });
-            count++;
-            if (max != null && count >= max) {
-                cursor = await cursor.continue();
-                while (cursor && !isMatchCriteria(cursor)) {
+        const isMatchCriteria = (cursor: IDBPCursorWithValue<unknown, ["cached-indexes"], "cached-indexes", "lastUpdated"> | null) => {
+            if (cursor && cursor.value.data && cursor.value.section === `${publicKey}_${type}`) {
+                let canAdd = true;
+                let shareName = cursor.value.shareName;
+                if (!shareNames && shareName) {
+                    canAdd = false;
+                }
+                else if (shareNames && (!shareName || !shareLookup[shareName])) {
+                    canAdd = false;
+                }
+                return canAdd;
+            }
+            return false;
+        }
+        while (cursor) {
+            if (isMatchCriteria(cursor)) {
+                cacheEntries.push({
+                    data: cursor.value.data,
+                    section: cursor.value.section,
+                    key: cursor.key,
+                    primaryKey: cursor.primaryKey,
+                    lastUpdated: cursor.value.lastUpdated
+                });
+                count++;
+                if (max != null && count >= max) {
                     cursor = await cursor.continue();
+                    while (cursor && !isMatchCriteria(cursor)) {
+                        cursor = await cursor.continue();
+                    }
+                    if (cursor) {
+                        nextKey = cursor.key;
+                        nextPrimaryKey = cursor.primaryKey;
+                    }
+                    break;
                 }
-                if (cursor) {
-                    nextKey = cursor.key;
-                    nextPrimaryKey = cursor.primaryKey;
-                }
-                break;
             }
+            cursor = await cursor.continue();
         }
-        cursor = await cursor.continue();
+    }
+    catch {
+
     }
     return {
         cacheEntries: cacheEntries,
@@ -600,6 +648,7 @@ export async function getEncryptedFile(
     fileName: string,
     id: string,
     type: string,
+    isPublic: boolean,
     owner: string | undefined = undefined) {
     let content: string | ArrayBuffer | null = null;
     try {
@@ -609,16 +658,24 @@ export async function getEncryptedFile(
             userName = owner;
         }
         let shareRootInfo = await getShareRootInfo(userData, true, userName);
-        let privateKey = await getPrivateKey(shareRootInfo.root, userSession, id, type, userName);
-        if (privateKey) {
-            let encryptedContent = await userSession.getFile(fileName, {
+        if (isPublic) {
+            content = await userSession.getFile(fileName, {
                 decrypt: false,
                 username: userName
-            }) as string;
-            if (encryptedContent) {
-                content = await userSession.decryptContent(encryptedContent, {
-                    privateKey: privateKey
-                });
+            })
+        }
+        else {
+            let privateKey = await getPrivateKey(shareRootInfo.root, userSession, id, type, userName);
+            if (privateKey) {
+                let encryptedContent = await userSession.getFile(fileName, {
+                    decrypt: false,
+                    username: userName
+                }) as string;
+                if (encryptedContent) {
+                    content = await userSession.decryptContent(encryptedContent, {
+                        privateKey: privateKey
+                    });
+                }
             }
         }
         if (!content) {

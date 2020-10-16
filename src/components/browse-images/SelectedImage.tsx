@@ -319,13 +319,23 @@ const SelectedImage = (props: SelectedImageProps) => {
   }
 
   const getOptions = () => {
-    const options: string[] = props.photo.browseEntry.fromShare ? ['Select'] : ['Share', 'Unshare', 'Edit', 'Delete', 'Select']
+    let options: string[] = ['Select'];
+    if (menuMetaData) {
+      if (!props.photo.browseEntry.fromShare) {
+        if (menuMetaData.isPublic) {
+          options = ['Edit', 'Delete'];
+        }
+        else {
+          options = ['Share', 'Unshare', 'Edit', 'Delete'];
+        }
+      }
 
-    if (props.selectedPlaylist) {
-      options.push('Remove from playlist');
-    }
-    else {
-      options.push('Add to playlist');
+      if (props.selectedPlaylist) {
+        options.push('Remove from playlist');
+      }
+      else {
+        options.push('Add to playlist');
+      }
     }
 
     return options;

@@ -190,7 +190,8 @@ export function BrowseVideos(props: BrowseVideosProps) {
         if (browseEntry.metaData.userName) {
             user = `/${browseEntry.metaData.userName}`;
         }
-        history.push(`/videos/show/${browseEntry.metaData.id}${user}?height=${browseEntry.actualHeight}&width=${browseEntry.actualWidth}`)
+        const access = browseEntry.metaData.isPublic ? "public" : "private";
+        history.push(`/videos/show/${access}/${browseEntry.metaData.id}${user}?height=${browseEntry.actualHeight}&width=${browseEntry.actualWidth}`)
     }
 
     const handleClick = (event: React.MouseEvent<HTMLElement>, metaData: MediaMetaData, fromShare: boolean) => {
@@ -272,13 +273,23 @@ export function BrowseVideos(props: BrowseVideosProps) {
     };
 
     const getOptions = () => {
-        const options: string[] = menuFromShare ? [] : ['Share', 'Unshare', 'Edit', 'Delete']
+        let options: string[] = [];
+        if (menuMetaData) {
+            if (!menuFromShare) {
+                if (menuMetaData.isPublic) {
+                    options = ['Edit', 'Delete'];
+                }
+                else {
+                    options = ['Share', 'Unshare', 'Edit', 'Delete'];
+                }
+            }
 
-        if (selectedPlaylist) {
-            options.push('Remove from playlist');
-        }
-        else {
-            options.push('Add to playlist');
+            if (selectedPlaylist) {
+                options.push('Remove from playlist');
+            }
+            else {
+                options.push('Add to playlist');
+            }
         }
 
         return options;

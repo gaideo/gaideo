@@ -14,7 +14,8 @@ interface VideoPlayerContext {
 
 interface ParamTypes {
   id: string;
-  owner?: string
+  owner?: string;
+  access?: string
 }
 
 interface VideoPlayerProps {
@@ -24,7 +25,7 @@ interface VideoPlayerProps {
 export function VideoPlayer(props: VideoPlayerProps) {
   const { authOptions } = useConnect();
   const { userSession } = authOptions;
-  const { id, owner } = useParams<ParamTypes>();
+  const { access, id, owner } = useParams<ParamTypes>();
   const videoRef = useRef<HTMLVideoElement>(null);
   const history = useHistory();
   const location = useLocation();
@@ -71,8 +72,11 @@ export function VideoPlayer(props: VideoPlayerProps) {
         if (owner && owner !== userData.username) {
           userName = owner;
         }
-        let videoKey = await getEncryptedFile(userSession, `videos/${id}/key.bin`, id, VideosType, userName);
-        context.current.videoKey = videoKey;
+        let videoKey: string | null = null;
+        if (access !== "public") {
+          videoKey = await getEncryptedFile(userSession, `videos/${id}/key.bin`, id, VideosType, false, userName) as string;
+          context.current.videoKey = videoKey;
+        }
         const widthRegex = /width=([0-9]{3,5})/g
         const heightRegex = /height=([0-9]{3,5})/g
         const heightResult = heightRegex.exec(location.search);
@@ -111,18 +115,23 @@ export function VideoPlayer(props: VideoPlayerProps) {
           }
           else {
             const w: any = window;
-            if (videoKey && w.webkit && w.webkit.messageHandlers && w.webkit.messageHandlers.gaideoMessageHandler) {
-              const buffer = Buffer.from(videoKey);
-              w.webkit.messageHandlers.gaideoMessageHandler.postMessage(
-                {
-                  "type": "set-key",
-                  "data": buffer.toString('base64'),
-                  "url": source
-                }
-              )
-            }
             const videoElem = videoRef.current;
-            videoElem.src = "gaideo://gaideo.com/master.m3u8";
+            if (videoKey) {
+              if (w.webkit && w.webkit.messageHandlers && w.webkit.messageHandlers.gaideoMessageHandler) {
+                const buffer = Buffer.from(videoKey);
+                w.webkit.messageHandlers.gaideoMessageHandler.postMessage(
+                  {
+                    "type": "set-key",
+                    "data": buffer.toString('base64'),
+                    "url": source
+                  }
+                )
+              }
+              videoElem.src = "gaideo://gaideo.com/master.m3u8";
+            }
+            else {
+              videoElem.src = source;
+            }
           }
         }
       }
@@ -146,33 +155,33 @@ export function VideoPlayer(props: VideoPlayerProps) {
         }
       }
     }
-  }, [userSession, location.search, history, id, owner]);
+  }, [userSession, location.search, history, id, owner, access]);
 
 
   return (
     <Fragment>
-    {Hls.isSupported() &&
-      <div style={{ paddingTop: !Hls.isSupported() ? 22 : 0, paddingLeft: props.isMobile ? 0 : 22 }}>
-      <video
-        ref={videoRef}
-        id="video"
-        width="100%"
-        style={{ maxWidth: width, maxHeight: height }}
-        controls></video>
-      <VideoDescription />
-    </div>    
-    }
-    {!Hls.isSupported() &&
-      <div style={{ paddingTop: 22, paddingLeft: props.isMobile ? 0 : 22 }}>
-      <video
-        playsInline
-        muted
-        autoPlay
-        ref={videoRef}
-        id="video"
-        controls></video>
-      <VideoDescription />
-    </div>    }
+      {Hls.isSupported() &&
+        <div style={{ paddingTop: !Hls.isSupported() ? 22 : 0, paddingLeft: props.isMobile ? 0 : 22 }}>
+          <video
+            ref={videoRef}
+            id="video"
+            width="100%"
+            style={{ maxWidth: width, maxHeight: height }}
+            controls></video>
+          <VideoDescription />
+        </div>
+      }
+      {!Hls.isSupported() &&
+        <div style={{ paddingTop: 22, paddingLeft: props.isMobile ? 0 : 22 }}>
+          <video
+            playsInline
+            muted
+            autoPlay
+            ref={videoRef}
+            id="video"
+            controls></video>
+          <VideoDescription />
+        </div>}
     </Fragment>
-);
+  );
 }

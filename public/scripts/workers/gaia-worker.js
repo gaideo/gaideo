@@ -62,7 +62,7 @@ const createMasterIndex = async () => {
     return masterIndex;
 }
 
-const getMasterIndex = async (root, userName) => {
+const getMasterIndex = async (root, userName, isPublic) => {
     let masterIndex = null;
     try {
         let fileName = 'master-index';
@@ -71,12 +71,14 @@ const getMasterIndex = async (root, userName) => {
         }
         let json;
         if (userName) {
-            const encryptedJson = await userSession.getFile(fileName, {
+            json = await userSession.getFile(fileName, {
                 decrypt: false,
                 verify: false,
                 username: userName
             });
-            json = await userSession.decryptContent(encryptedJson);
+            if (!isPublic) {
+                json = await userSession.decryptContent(json);
+            }
         }
         else {
             json = await userSession.getFile(fileName, {
@@ -216,23 +218,25 @@ const updateCachedIndex = async (indexFile, pk) => {
         let id = getIDFromIndexFileName(indexFile);
         let type = getTypeFromIndexFileName(indexFile);
         if (id) {
-            let privateKey = await getPrivateKey(userSession, id, type);
-            if (privateKey) {
-                let json = await userSession.getFile(indexFile, {
-                    decrypt: privateKey
-                });
-                let metaData = JSON.parse(json);
-                let encryptedJson = await userSession.encryptContent(json);
-                let cachedIndex = {
-                    data: encryptedJson,
-                    id: indexID,
-                    section: `${ownerPublicKey}_${metaData.type}`,
-                    lastUpdated: metaData.lastUpdatedUTC
-                }
-                await db.put('cached-indexes', cachedIndex);
-                await updateSearchHashes(indexID, metaData, true);
-                return true;
+            let json = await userSession.getFile(indexFile, {
+                decrypt: false
+            });
+            let metaData = JSON.parse(json);
+            if (metaData.iv) {
+                let privateKey = await getPrivateKey(userSession, id, type);
+                json = await userSession.decryptContent(json, { privateKey: privateKey })
+                metaData = JSON.parse(json);
             }
+            let encryptedJson = await userSession.encryptContent(json);
+            let cachedIndex = {
+                data: encryptedJson,
+                id: indexID,
+                section: `${ownerPublicKey}_${metaData.type}`,
+                lastUpdated: metaData.lastUpdatedUTC
+            }
+            await db.put('cached-indexes', cachedIndex);
+            await updateSearchHashes(indexID, metaData, true);
+            return true;
         }
     }
     return false;
@@ -298,15 +302,20 @@ const updateSearchHashes = async (cacheid, metaData, isUpdate) => {
     }
 }
 
-const saveGaiaIndexesToCache = async (userName) => {
+const saveGaiaIndexesToCache = async (userName, isPublic) => {
     let newCounts = {};
     try {
         let ownerPublicKey = blockstack.getPublicKeyFromPrivate(sessionData.userData.appPrivateKey);;
         let root = '';
         if (userName) {
-            root = getUserDirectory(ownerPublicKey);
+            if (!isPublic) {
+                root = getUserDirectory(ownerPublicKey);
+            }
+            else {
+                root = `share/public/`
+            }
         }
-        let masterIndex = await getMasterIndex(root, userName);
+        let masterIndex = await getMasterIndex(root, userName, isPublic);
         if (masterIndex) {
             existingCache = {};
             const index = db.transaction('cached-indexes').store.index('section');
@@ -320,6 +329,12 @@ const saveGaiaIndexesToCache = async (userName) => {
                         }
                         else if (userName
                             && (!cursor.value.shareName || userName.toLowerCase() !== cursor.value.shareName.toLowerCase())) {
+                            canAdd = false;
+                        }
+                        else if (cursor.value.isPublic && !isPublic) {
+                            canAdd = false;
+                        }
+                        else if (!cursor.value.isPublic && isPublic) {
                             canAdd = false;
                         }
                         if (canAdd) {
@@ -342,12 +357,17 @@ const saveGaiaIndexesToCache = async (userName) => {
                         let id = getIDFromIndexFileName(indexFile);
                         if (id) {
                             let type = getTypeFromIndexFileName(indexFile);
-                            let privateKey = await getPrivateKey(userSession, id, type, userName);
                             let json = await userSession.getFile(indexFile, {
-                                decrypt: privateKey,
+                                decrypt: false,
                                 username: userName
                             });
                             let metaData = JSON.parse(json);
+                            if (metaData.iv) {
+                                let privateKey = await getPrivateKey(userSession, id, type, userName);
+                                json = await userSession.decryptContent(json, { privateKey: privateKey });
+                                metaData = JSON.parse(json);
+                            }
+
                             // old format skip
                             if (metaData.mediaType !== null && metaData.mediaType !== undefined) {
                                 continue;
@@ -362,7 +382,8 @@ const saveGaiaIndexesToCache = async (userName) => {
                                 id: indexID,
                                 section: `${ownerPublicKey}_${metaData.type}`,
                                 lastUpdated: metaData.lastUpdatedUTC,
-                                shareName: userName
+                                shareName: userName,
+                                isPublic: isPublic
                             }
                             await db.put('cached-indexes', cachedIndex);
                             await updateSearchHashes(indexID, metaData, lastProcessed ? true : false);
@@ -386,9 +407,9 @@ const saveGaiaIndexesToCache = async (userName) => {
                     delete masterIndex[x];
                 })
                 await userSession.putFile("master-index", JSON.stringify(masterIndex), {
-                    encrypt: true,
+                    encrypt: !isPublic,
                     wasString: true,
-                    sign: true
+                    sign: !isPublic
                 })
             }
             for (let key in existingCache) {
@@ -400,6 +421,22 @@ const saveGaiaIndexesToCache = async (userName) => {
     }
     catch (error) {
         console.log(error);
+    }
+    if (userName && !isPublic) {
+        let counts = await saveGaiaIndexesToCache(userName, true);
+        if (counts) {
+            for (type in counts) {
+                if (counts[type] > 0) {
+                    if (newCounts[type] > 0) {
+                        const count = newCounts[type];
+                        newCounts[type] = count + counts[type];
+                    }
+                    else {
+                        newCounts[type] = counts[type];
+                    }
+                }
+            }
+        }
     }
     return newCounts;
 }
@@ -639,9 +676,9 @@ self.addEventListener(
                     }
                 });
                 try {
-                    await userSession.deleteFile('master-index');        
+                    await userSession.deleteFile('master-index');
                 }
-                catch {}
+                catch { }
 
                 postMessage({
                     message: "deletedbcomplete",

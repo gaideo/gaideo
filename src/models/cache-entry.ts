@@ -6,7 +6,7 @@ export interface CacheEntry {
     section: string;
     lastUpdated: Date;
     shareName?: string;
-    groups?: string[];
+    isPublic?: boolean;
 }
 
 export interface CacheResults {

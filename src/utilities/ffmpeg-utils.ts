@@ -478,10 +478,12 @@ export async function convertVideoToHls(
                                 });
                             }
                         }
-                        hlsFiles.push({
-                            name: "key.bin",
-                            data: keyData
-                        });
+                        if (encrypt) {
+                            hlsFiles.push({
+                                name: "key.bin",
+                                data: keyData
+                            });
+                        }
 
                         metaData.manifest = hlsFiles.map(x => x.name);
                         metaData.type = VideosType;
@@ -492,7 +494,7 @@ export async function convertVideoToHls(
 
                     }
                     else {
-                        return { errorMessage: "Unknown error. No encrypted hls files were generated." }
+                        return { errorMessage: "Unknown error. No encoded HLS files were generated." }
                     }
 
                 }

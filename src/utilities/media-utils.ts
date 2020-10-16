@@ -50,14 +50,16 @@ export async function deleteVideoEntry(
                     wasSigned: false
                 });
             }
-            try {
-                let keyFile = `videos/${metaData.id}/private.key`;
-                if (updateProgress) {
-                    updateProgress(`Deleting video file: ${keyFile}.`, null);
+            if (!metaData.isPublic) {
+                try {
+                    let keyFile = `videos/${metaData.id}/private.key`;
+                    if (updateProgress) {
+                        updateProgress(`Deleting video file: ${keyFile}.`, null);
+                    }
+                    await userSession?.deleteFile(keyFile)
                 }
-                await userSession?.deleteFile(keyFile)
+                catch { }
             }
-            catch { }
 
             let indexUrl: string = `videos/${metaData.id}.index`;
             if (updateProgress) {
@@ -91,16 +93,18 @@ export async function deleteImageEntry(
             await userSession?.deleteFile(fileName, {
                 wasSigned: false
             });
-            try {
-                let keyFile = `images/${metaData.id}/private.key`;
-                if (updateProgress) {
-                    updateProgress(`Deleting private key: ${keyFile}`, null);
+            if (!metaData.isPublic) {
+                try {
+                    let keyFile = `images/${metaData.id}/private.key`;
+                    if (updateProgress) {
+                        updateProgress(`Deleting private key: ${keyFile}`, null);
+                    }
+                    await userSession?.deleteFile(keyFile, {
+                        wasSigned: false
+                    });
                 }
-                await userSession?.deleteFile(keyFile, {
-                    wasSigned: false
-                });
+                catch { }
             }
-            catch { }
         }
 
         let indexUrl: string = `images/${metaData.id}.index`;
@@ -139,22 +143,23 @@ export async function loadBrowseEntryFromCache(userSession: UserSession, metaDat
                             previewImageName = `videos/${metaData.id}/${metaData.id}_preview.jpg`;
                         }
                     }
-                    content = await getEncryptedFile(userSession, previewImageName, metaData.id, metaData.type, metaData.userName);
+                    const isPublic = metaData.isPublic ? true : false;
+                    content = await getEncryptedFile(userSession, previewImageName, metaData.id, metaData.type, isPublic, metaData.userName);
                 }
                 else {
                     content = null;
                 }
                 let userData = userSession.loadUserData();
-                be = {
-                    metaData: metaData,
-                    previewImage: '',
-                    source: source,
-                    age: computeAge(metaData.lastUpdatedUTC),
-                    fromShare: (metaData.userName && metaData.userName !== userData.username) as boolean
-                };
 
                 let buffer = content as ArrayBuffer;
                 if (!loadPreviewImage || buffer) {
+                    be = {
+                        metaData: metaData,
+                        previewImage: '',
+                        source: source,
+                        age: computeAge(metaData.lastUpdatedUTC),
+                        fromShare: (metaData.userName && metaData.userName !== userData.username) as boolean
+                    };
                     const base64 = base64ArrayBuffer(buffer);
                     if (be) {
                         be.previewImage = base64;
@@ -181,16 +186,25 @@ export async function loadBrowseEntry(
         if (mediaID) {
             let userData = userSession.loadUserData();
             let mediaRootInfo = await getShareRootInfo(userData, true, userName);
-            let privateKey = await getPrivateKey(mediaRootInfo.root, userSession, mediaID, mediaType, userName);
-            if (privateKey) {
-                let content = await userSession?.getFile(indexFile, {
-                    decrypt: privateKey,
-                    username: userName
-                });
-                if (content && typeof (content) === "string") {
-                    let metaData = JSON.parse(content);
-                    be = await loadBrowseEntryFromCache(userSession, metaData, loadPreviewImage);
+            let content = await userSession?.getFile(indexFile, {
+                decrypt: false,
+                username: userName
+            }) as string;
+            let metaData = JSON.parse(content);
+            if (metaData.iv) {
+                let privateKey = await getPrivateKey(mediaRootInfo.root, userSession, mediaID, mediaType, userName);
+                if (privateKey) {
+                    content = await userSession.decryptContent(content, {
+                        privateKey: privateKey
+                    }) as string;
+                    metaData = JSON.parse(content);
                 }
+                else {
+                    metaData = null;
+                }
+            }
+            if (metaData) {
+                be = await loadBrowseEntryFromCache(userSession, metaData, loadPreviewImage);
             }
         }
     }
@@ -200,9 +214,9 @@ export async function loadBrowseEntry(
     return be;
 }
 
-export async function loadBatchVideos(userSession: UserSession, 
-    startIndex: number, 
-    cacheEntries: CacheEntry[], 
+export async function loadBatchVideos(userSession: UserSession,
+    startIndex: number,
+    cacheEntries: CacheEntry[],
     allVideos: BrowseEntry[],
     batchSize: number,
     videosLoadedCallback: VideosLoadedCallback) {
@@ -211,8 +225,14 @@ export async function loadBatchVideos(userSession: UserSession,
         && startIndex < cacheEntries.length) {
         let loadingCount = 0;
         let arr: BrowseEntry[] = [];
-        for (let i = startIndex; (i-startIndex) < batchSize && i < cacheEntries.length; i++) {
-            let decryptedData = await userSession.decryptContent(cacheEntries[i].data) as string;
+        for (let i = startIndex; (i - startIndex) < batchSize && i < cacheEntries.length; i++) {
+            let decryptedData: string | null = null;
+            try {
+                decryptedData = await userSession.decryptContent(cacheEntries[i].data) as string;
+            }
+            catch (error) {
+                console.log(error);
+            }
             if (decryptedData) {
                 let metaData = JSON.parse(decryptedData);
                 let be = await loadBrowseEntryFromCache(userSession, metaData, true) as BrowseEntry;
@@ -266,9 +286,9 @@ export function loadPhoto(be: BrowseEntry, img: HTMLImageElement, src: string) {
     return photo;
 }
 
-export async function loadBatchImages(userSession: UserSession, 
-    startIndex: number, 
-    cacheEntries: CacheEntry[], 
+export async function loadBatchImages(userSession: UserSession,
+    startIndex: number,
+    cacheEntries: CacheEntry[],
     allPhotos: Photo[],
     batchSize: number,
     imagesLoadedCallback: ImagesLoadedCallback) {
@@ -277,7 +297,7 @@ export async function loadBatchImages(userSession: UserSession,
         && startIndex < cacheEntries.length) {
         let loadingCount = 0;
         let arr: Photo[] = [];
-        for (let i = startIndex; (i-startIndex) < batchSize && i < cacheEntries.length; i++) {
+        for (let i = startIndex; (i - startIndex) < batchSize && i < cacheEntries.length; i++) {
             let decryptedData = await userSession.decryptContent(cacheEntries[i].data) as string;
             if (decryptedData) {
                 let metaData = JSON.parse(decryptedData);
@@ -293,7 +313,7 @@ export async function loadBatchImages(userSession: UserSession,
                     img.src = src;
                 }
             }
-}
+        }
         while (loadingCount !== arr.length) {
             await sleep(300);
         }

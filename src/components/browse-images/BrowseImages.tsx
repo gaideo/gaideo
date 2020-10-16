@@ -60,7 +60,7 @@ export function BrowseImages(props: BrowseImagesProps) {
 
         const refresh = async () => {
             let arr: Photo[] = [];
-            if (db && userSession?.isUserSignedIn()) {
+            if (worker && db && userSession?.isUserSignedIn()) {
                 let sp = await getSelectedGroup(userSession);
                 let moreCacheResults;
                 if (props.searchText && props.searchText.trim().length > 0) {
@@ -85,7 +85,7 @@ export function BrowseImages(props: BrowseImagesProps) {
                             await trackPromise(loadBatchImages(userSession, i, moreCacheResults.cacheEntries, arr, batchSize, imagesLoadedCallback));
                         }
                         else {
-                            loadBatchImages(userSession, i, moreCacheResults.cacheEntries, arr, batchSize, imagesLoadedCallback);
+                            await loadBatchImages(userSession, i, moreCacheResults.cacheEntries, arr, batchSize, imagesLoadedCallback);
                         }
                     }
                     if (moreCacheResults.nextKey && moreCacheResults.nextPrimaryKey) {
@@ -315,14 +315,14 @@ export function BrowseImages(props: BrowseImagesProps) {
                     </div>
                 </div>
             }
-            {(props.photos && props.photos.length > 0 && props.slideShowIndex !== null) &&
+            {(!noResults && props.slideShowIndex !== null) &&
                 <SlideShow
                     images={props.photos}
                     current={props.slideShowIndex}
                     closeSlideShowCallback={closeSlideShowCallback}
                 />
             }
-            {(props.photos && props.photos.length > 0 && props.slideShowIndex === null) &&
+            {(!noResults && props.slideShowIndex === null) &&
                 <div style={{ paddingLeft: !props.isMobile ? 22 : 0 }}>
                     <Gallery photos={props.photos} direction={"row"} renderImage={imageRenderer} />
                     {canLoadMore() &&

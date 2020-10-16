@@ -5,7 +5,7 @@ import Stepper from '@material-ui/core/Stepper';
 import Step from '@material-ui/core/Step';
 import StepLabel from '@material-ui/core/StepLabel';
 import Button from '@material-ui/core/Button';
-import { TextField, FormControl, Box, FormHelperText } from '@material-ui/core';
+import { TextField, FormControl, Box, FormHelperText, FormControlLabel, Checkbox, Typography } from '@material-ui/core';
 import Dropzone from '../dropzone/Dropzone';
 import { MediaMetaData } from '../../models/media-meta-data';
 import { useConnect } from '@blockstack/connect';
@@ -75,11 +75,16 @@ export default function PublishVideo(props: PublishVideoProps) {
     const history = useHistory();
     const { id, type } = useParams<ParamTypes>();
     const [steps, setSteps] = useState(Array<string>());
+    const [isPublic, setIsPublic] = React.useState(false);
 
     const onFilesAdded = (files: any) => {
         setFiles(files);
     }
-    
+
+    const handleIsPublicChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        setIsPublic((event.target as HTMLInputElement).checked)
+    };
+
     const getStepContent = (step: number) => {
         switch (step) {
             case 0:
@@ -122,6 +127,20 @@ export default function PublishVideo(props: PublishVideoProps) {
                                 setKeywordsErrorMessage(keywordsMessage);
                             }}
                         />
+                        <FormControlLabel
+                            control={
+                                <Checkbox
+                                    checked={isPublic}
+                                    onChange={(event: React.ChangeEvent<HTMLInputElement>) => { handleIsPublicChange(event); }}
+                                    name={`checkIsPublic`}
+                                    color="primary"
+                                />
+                            }
+                            label={"Is Public"}
+                        />
+                        {isPublic &&
+                            <Typography variant="body1" color="error">Warning: Public media is not encrypted and will be viewable by anyone that adds you as a friend.</Typography>
+                        }
                     </Fragment>)
             case 1:
                 return renderUpload();
@@ -267,7 +286,7 @@ export default function PublishVideo(props: PublishVideoProps) {
                     errorMessage = "You cannot upload photos with any other media type."
                     hasError = true;
                 }
-                else if (imageCount === 0 && unencryptedVideoCount === 0 && (!foundKey || !previewImageName)) {
+                else if (imageCount === 0 && unencryptedVideoCount === 0 && ((!foundKey && !isPublic) || !previewImageName)) {
                     if (!foundKey) {
                         errorMessage = "Missing key file for HLS stream.";
                     }
@@ -298,7 +317,8 @@ export default function PublishVideo(props: PublishVideoProps) {
                         manifest: manifest,
                         createdDateUTC: nowUTC,
                         lastUpdatedUTC: nowUTC,
-                        type: ImagesType
+                        type: ImagesType,
+                        isPublic: isPublic
                     }
                     return imagesEntry;
                 }
@@ -314,7 +334,8 @@ export default function PublishVideo(props: PublishVideoProps) {
                         createdDateUTC: nowUTC,
                         lastUpdatedUTC: nowUTC,
                         type: UnencryptedVideosType,
-                        previewImageName: computeNameFromImageFile(filesToUpload[0].name)
+                        previewImageName: computeNameFromImageFile(filesToUpload[0].name),
+                        isPublic: isPublic
                     }
                     return metaData;
                 }
@@ -333,7 +354,8 @@ export default function PublishVideo(props: PublishVideoProps) {
                         createdDateUTC: nowUTC,
                         lastUpdatedUTC: nowUTC,
                         type: VideosType,
-                        previewImageName: previewImageName ? `videos/${id}/${previewImageName}` : ''
+                        previewImageName: previewImageName ? `videos/${id}/${previewImageName}` : '',
+                        isPublic: isPublic
                     }
                     return metaData;
                 }
@@ -377,15 +399,24 @@ export default function PublishVideo(props: PublishVideoProps) {
                     data = await readBinaryFile(file);
                 }
                 let buffer = Buffer.from(new Uint8Array(data));
-                let publicKey = getPublicKeyFromPrivate(privateKey);
-                let encryptedData = await userSession.encryptContent(buffer, {
-                    publicKey: publicKey
-                });
-                await userSession.putFile(name, encryptedData, {
-                    encrypt: false,
-                    wasString: true,
-                    contentType: 'application/json'
-                })
+                if (privateKey) {
+                    let publicKey = getPublicKeyFromPrivate(privateKey);
+                    let encryptedData = await userSession.encryptContent(buffer, {
+                        publicKey: publicKey
+                    });
+                    await userSession.putFile(name, encryptedData, {
+                        encrypt: false,
+                        wasString: true,
+                        contentType: 'application/json'
+                    })
+                }
+                else {
+                    await userSession.putFile(name, buffer, {
+                        encrypt: false,
+                        wasString: true,
+                        contentType: getVideoFileContentType(file.name)
+                    })
+                }
             }
             else {
                 let data;
@@ -420,15 +451,23 @@ export default function PublishVideo(props: PublishVideoProps) {
             if (metaData.manifest.length > 1) {
                 copy.title = `${title} (${file.name})`;
             }
-            let privateKey = await createPrivateKey(userSession, copy.id, ImagesType);
-            let publicKey = getPublicKeyFromPrivate(privateKey);
-            if (privateKey) {
+            let privateKey = '';
+            if (!isPublic) {
+                privateKey = await createPrivateKey(userSession, copy.id, ImagesType);
+            }
+            if (privateKey || isPublic) {
                 let indexFile = `images/${copy.id}.index`;
 
-                let encryptedData = await userSession.encryptContent(JSON.stringify(copy), {
-                    publicKey: publicKey
-                });
-                await userSession.putFile(indexFile, encryptedData, {
+                let data = JSON.stringify(copy);
+                let publicKey = '';
+                if (privateKey) {
+                    publicKey = getPublicKeyFromPrivate(privateKey);
+                    data = await userSession.encryptContent(data, {
+                        publicKey: publicKey
+                    });
+                }
+
+                await userSession.putFile(indexFile, data, {
                     encrypt: false,
                     wasString: true,
                     contentType: 'application/json'
@@ -439,15 +478,22 @@ export default function PublishVideo(props: PublishVideoProps) {
 
                     let data = await readBinaryFile(file);
                     let buffer = Buffer.from(new Uint8Array(data));
-                    let encryptedData = await userSession.encryptContent(buffer, {
-                        publicKey: publicKey
-                    });
-                    await userSession.putFile(name, encryptedData, {
-                        encrypt: false,
-                        wasString: true,
-                        contentType: 'application/json'
-                    })
-
+                    if (privateKey) {
+                        let encryptedData = await userSession.encryptContent(buffer, {
+                            publicKey: publicKey
+                        });
+                        await userSession.putFile(name, encryptedData, {
+                            encrypt: false,
+                            wasString: true,
+                            contentType: 'application/json'
+                        })
+                    }
+                    else {
+                        await userSession.putFile(name, buffer, {
+                            encrypt: false,
+                            wasString: true
+                        });
+                    }
                     ret = {
                         metaData: copy,
                         indexFile: indexFile
@@ -500,13 +546,19 @@ export default function PublishVideo(props: PublishVideoProps) {
         let fname = `videos/${metaData.id}.index`;
 
         props.updateProgressCallback(`Uploading index file...`, null);
-        let privateKey = await createPrivateKey(userSession, metaData.id, VideosType);
-        if (privateKey) {
-            let publicKey = getPublicKeyFromPrivate(privateKey);
-            let encryptedData = await userSession.encryptContent(JSON.stringify(metaData), {
-                publicKey: publicKey
-            });
-            await userSession.putFile(fname, encryptedData, {
+        let privateKey = '';
+        if (!isPublic) {
+            privateKey = await createPrivateKey(userSession, metaData.id, VideosType);
+        }
+        if (privateKey || isPublic) {
+            let data = JSON.stringify(metaData);
+            if (privateKey) {
+                let publicKey = getPublicKeyFromPrivate(privateKey);
+                data = await userSession.encryptContent(data, {
+                    publicKey: publicKey
+                });
+            }
+            await userSession.putFile(fname, data, {
                 encrypt: false,
                 wasString: true,
                 contentType: 'application/json'
@@ -543,12 +595,12 @@ export default function PublishVideo(props: PublishVideoProps) {
             setUploading(true);
             try {
                 if (metaData.type === UnencryptedVideosType) {
-                    let encryptResult = await convertVideoToHls(metaData, files[0], props.isMobile, true, props.updateProgressCallback);
-                    if (encryptResult.metaData && encryptResult.hlsFiles) {
-                        await saveVideoFiles(userSession, encryptResult.metaData, encryptResult.hlsFiles);
+                    let encodeResult = await convertVideoToHls(metaData, files[0], props.isMobile, !isPublic, props.updateProgressCallback);
+                    if (encodeResult.metaData && encodeResult.hlsFiles) {
+                        await saveVideoFiles(userSession, encodeResult.metaData, encodeResult.hlsFiles);
                     }
                     else {
-                        Promise.reject(encryptResult.errorMessage);
+                        throw new Error(encodeResult.errorMessage);
                     }
                 }
                 else if (metaData.type === VideosType) {
@@ -611,7 +663,7 @@ export default function PublishVideo(props: PublishVideoProps) {
                         wasString: true,
                         contentType: 'application/json'
                     })
-    
+
                     updateMasterIndex(userSession, props.worker, FileOperation.Update, [{ indexFile: indexFile, metaData: be.metaData }]);
                     if (type === ImagesType) {
                         if (props.photos) {
