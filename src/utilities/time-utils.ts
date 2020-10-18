@@ -34,18 +34,19 @@ export function getTimeAge(fromTime: Date, toTime: Date) {
     if (years >= 1) {
         return `${years} year${years > 1 ? 's' : ''} ago`
     }
-    let days = Math.floor(diff / dayMs);
+    let days = diff / dayMs;
     if (days >= 1) {
-        if (days > 30) {
-            let months = Math.floor(days / monthMs);
+        if (days >= 30) {
+            let months = Math.floor(diff / monthMs);
             return `${months} month${months > 1 ? 's' : ''} ago`
         }
-        else if (days > 7) {
-            let weeks = Math.floor(days / weekMs);
+        else if (days >= 7) {
+            let weeks = Math.floor(diff / weekMs);
             return `${weeks} week${weeks > 1 ? 's' : ''} ago`
         }
         else {
-            return `${days} day${days > 1 ? 's' : ''} ago`
+            let daysDisplay = Math.floor(days);
+            return `${daysDisplay} day${daysDisplay > 1 ? 's' : ''} ago`
         }
     }
     let hours = Math.floor(diff / hourMs);
