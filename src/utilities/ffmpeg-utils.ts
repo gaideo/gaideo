@@ -312,7 +312,7 @@ export async function convertVideoToHls(
 
     let gettingDimensions = false;
     let encoding = false;
-    let encodingMessage = `${encrypt ? "Encrypting" : "Encoding"} video.  This may take a while depending on the size...`;
+    let encodingMessage = `${encrypt ? "Encrypting" : "Transcoding"} video.  This may take a while depending on the size...`;
 
     const handleLogMessage = (e: any) => {
         if (gettingDimensions) {

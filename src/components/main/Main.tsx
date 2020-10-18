@@ -155,6 +155,13 @@ export default function Main(props: MainProps) {
     }
 
     useEffect(() => {
+        if (!promiseInProgress) {
+            setProgressMessage(null);
+            setProgressSubMessage(null);
+        }
+    }, [promiseInProgress])
+    
+    useEffect(() => {
         const refresh = async () => {
 
             if (userSession?.isSignInPending()) {
