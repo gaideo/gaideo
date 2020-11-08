@@ -5,10 +5,11 @@ import { BrowseEntry } from '../../models/browse-entry';
 import "./BrowseVideos.css";
 import MenuItem from '@material-ui/core/MenuItem';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
-import { useHistory } from 'react-router-dom';
+import { useHistory, useLocation } from 'react-router-dom';
 import { getCacheEntries, getShares, shareFile, getSelectedShares, getSelectedGroup, addToGroup, getCacheEntriesFromGroup, removeFromGroup, isFileShared, getCacheEntriesFromSearch } from '../../utilities/gaia-utils';
 import { deleteVideoEntry, VideosType, loadBatchVideos } from '../../utilities/media-utils';
 import ConfirmDialog from '../confirm-dialog/ConfirmDialog';
+import CopyDialog from '../copy-dialog/CopyDialog';
 import ShareUserDialog from '../share-user-dialog/ShareUserDialog';
 import { MediaMetaData } from '../../models/media-meta-data';
 import { trackPromise } from 'react-promise-tracker';
@@ -39,11 +40,11 @@ export function BrowseVideos(props: BrowseVideosProps) {
     const { userSession } = authOptions;
     const history = useHistory();
     const [confirmOpen, setConfirmOpen] = React.useState(false);
+    const [copyOpen, setCopyOpen] = React.useState(false);
     const [shareUserOpen, setShareUserOpen] = React.useState(false);
     const [shareUsers, setShareUsers] = React.useState<Array<string>>([]);
     const [unshare, setUnshare] = React.useState(false);
-    const [menuMetaData, setMenuMetaData] = React.useState<MediaMetaData | null>(null);
-    const [menuFromShare, setMenuFromShare] = React.useState(false);
+    const [menuBrowseEntry, setMenuBrowseEntry] = React.useState<BrowseEntry | null>(null);
     const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
     const open = Boolean(anchorEl);
     const [loadingMore, setLoadingMore] = React.useState(false);
@@ -52,6 +53,7 @@ export function BrowseVideos(props: BrowseVideosProps) {
     const [selectedPlaylist, setSelectedPlaylist] = React.useState<string | null>(null);
     const [addToPlaylistOpen, setAddToPlaylistOpen] = React.useState(false);
     const [noResults, setNoResults] = React.useState(false);
+    const location = useLocation();
 
     const db = props.db;
     const worker = props.worker;
@@ -171,6 +173,10 @@ export function BrowseVideos(props: BrowseVideosProps) {
         }
     }
 
+    const copyResult = () => {
+        setCopyOpen(false);
+    }
+
     const shareUserResult = (item: MediaMetaData, unshare: boolean, result: ShareUserEntry[] | undefined) => {
         setShareUserOpen(false);
         if (userSession && result && result.length > 0) {
@@ -194,9 +200,8 @@ export function BrowseVideos(props: BrowseVideosProps) {
         history.push(`/videos/show/${access}/${browseEntry.metaData.id}${user}?height=${browseEntry.actualHeight}&width=${browseEntry.actualWidth}`)
     }
 
-    const handleClick = (event: React.MouseEvent<HTMLElement>, metaData: MediaMetaData, fromShare: boolean) => {
-        setMenuMetaData(metaData);
-        setMenuFromShare(fromShare);
+    const handleClick = (event: React.MouseEvent<HTMLElement>, browseEntry: BrowseEntry) => {
+        setMenuBrowseEntry(browseEntry);
         setAnchorEl(event.currentTarget);
     };
 
@@ -205,15 +210,15 @@ export function BrowseVideos(props: BrowseVideosProps) {
     }
 
     const removeVideoFromGroup = async () => {
-        if (menuMetaData && userSession?.isUserSignedIn() && selectedPlaylist) {
+        if (menuBrowseEntry && userSession?.isUserSignedIn() && selectedPlaylist) {
             let found: number = -1;
             for (let i = 0; i < videos?.length; i++) {
-                if (videos[i].metaData.id === menuMetaData.id) {
+                if (videos[i].metaData.id === menuBrowseEntry.metaData.id) {
                     found = i;
                     break;
                 }
             }
-            await removeFromGroup([menuMetaData], userSession, selectedPlaylist)
+            await removeFromGroup([menuBrowseEntry.metaData], userSession, selectedPlaylist)
             if (found >= 0) {
                 let newVideos = videos.slice();
                 newVideos.splice(found, 1);
@@ -223,14 +228,14 @@ export function BrowseVideos(props: BrowseVideosProps) {
     }
 
     const handleShare = async (isUnshare: boolean) => {
-        if (userSession?.isUserSignedIn() && menuMetaData) {
+        if (userSession?.isUserSignedIn() && menuBrowseEntry) {
             let friends = await getShares(userSession);
             if (friends) {
                 const users: string[] = []
                 for (let key in friends) {
                     let canAdd = true;
                     if (isUnshare) {
-                        const isShared = await isFileShared(userSession, key, menuMetaData);
+                        const isShared = await isFileShared(userSession, key, menuBrowseEntry.metaData);
                         if (!isShared) {
                             canAdd = false;
                         }
@@ -248,23 +253,28 @@ export function BrowseVideos(props: BrowseVideosProps) {
 
     const handleMenu = async (option: string) => {
         if (option === 'Delete') {
-            if (menuMetaData) {
+            if (menuBrowseEntry) {
                 setConfirmOpen(true);
             }
         }
         else if (option === 'Edit') {
-            if (menuMetaData) {
-                history.push(`/publish/${menuMetaData.type}/${menuMetaData.id}`);
+            if (menuBrowseEntry) {
+                history.push(`/publish/${menuBrowseEntry.metaData.type}/${menuBrowseEntry.metaData.id}`);
             }
         }
         else if (option === 'Share' || option === 'Unshare') {
-            trackPromise(handleShare(option === 'Unshare'));
+            if (menuBrowseEntry?.metaData?.isPublic) {
+                setCopyOpen(true);
+            }
+            else {
+                trackPromise(handleShare(option === 'Unshare'));
+            }
         }
         else if (option === 'Add to playlist') {
             setAddToPlaylistOpen(true);
         }
         else if (option === 'Remove from playlist'
-            && menuMetaData
+            && menuBrowseEntry
             && userSession?.isUserSignedIn()
             && selectedPlaylist) {
             trackPromise(removeVideoFromGroup())
@@ -274,10 +284,10 @@ export function BrowseVideos(props: BrowseVideosProps) {
 
     const getOptions = () => {
         let options: string[] = [];
-        if (menuMetaData) {
-            if (!menuFromShare) {
-                if (menuMetaData.isPublic) {
-                    options = ['Edit', 'Delete'];
+        if (menuBrowseEntry) {
+            if (!menuBrowseEntry.fromShare) {
+                if (menuBrowseEntry.metaData.isPublic) {
+                    options = ['Share', 'Edit', 'Delete'];
                 }
                 else {
                     options = ['Share', 'Unshare', 'Edit', 'Delete'];
@@ -302,13 +312,36 @@ export function BrowseVideos(props: BrowseVideosProps) {
         return false;
     }
 
+    const getPublicVideoUrl = async () => {
+        if (copyOpen && userSession?.isUserSignedIn() && menuBrowseEntry && menuBrowseEntry.metaData.isPublic) {
+            let userData = userSession.loadUserData();
+            let userName: string | undefined = undefined;
+            if (menuBrowseEntry && menuBrowseEntry.metaData.userName && menuBrowseEntry.metaData.userName !== userData.username) {
+                userName = menuBrowseEntry.metaData.userName;
+            }
+            let source = await userSession.getFileUrl(``, {
+                username: userName
+            });
+            if (source) {
+                const url = new URL(source);
+                source = `${window.location.origin}/#/videoplayer/public/${url.hostname}/${menuBrowseEntry.metaData.id}?path=${url.pathname}&height=${menuBrowseEntry.actualHeight}&width=${menuBrowseEntry.actualWidth}`
+                console.log(source);
+            }
+            return source;
+
+        }
+        return ''
+    }
+
     return (
         <Fragment>
             {(props.videos && props.videos.length > 0) &&
                 <div>
-                    <ShareUserDialog open={shareUserOpen} metaData={menuMetaData} initialUsers={shareUsers} unshare={unshare} shareUsersResult={shareUserResult} />
-                    <AddToPlaylistDialog open={addToPlaylistOpen} metaData={menuMetaData} result={addToPlaylistResult} />
-                    <ConfirmDialog open={confirmOpen} item={menuMetaData} onResult={deleteConfirmResult} title="Confirm Delete" message={`Are you sure you want to delete ${menuMetaData?.title}?`} />
+                    <ShareUserDialog open={shareUserOpen} metaData={menuBrowseEntry?.metaData ?? null} initialUsers={shareUsers} unshare={unshare} shareUsersResult={shareUserResult} />
+                    <AddToPlaylistDialog open={addToPlaylistOpen} metaData={menuBrowseEntry?.metaData ?? null} result={addToPlaylistResult} />
+                    <ConfirmDialog open={confirmOpen} item={menuBrowseEntry?.metaData ?? null} onResult={deleteConfirmResult} title="Confirm Delete" message={`Are you sure you want to delete ${menuBrowseEntry?.metaData?.title}?`} />
+                    <CopyDialog open={copyOpen} onResult={copyResult} title="Copy Link" getTextCallback={getPublicVideoUrl} />
+
                     <Toolbar style={{ flexWrap: 'wrap', justifyContent: 'space-around' }}>
                         {props.videos.map(x => (
                             <div key={x.metaData.id}>
@@ -336,7 +369,7 @@ export function BrowseVideos(props: BrowseVideosProps) {
                                     <div>
                                         <IconButton
                                             style={{ minWidth: 30, outline: 'none', paddingTop: 0, paddingBottom: 0, paddingLeft: 5, paddingRight: 5 }}
-                                            onClick={(e) => handleClick(e, x.metaData, x.fromShare)}
+                                            onClick={(e) => handleClick(e, x)}
                                         >
                                             <MoreVertIcon />
                                         </IconButton>

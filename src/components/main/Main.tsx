@@ -60,6 +60,7 @@ export default function Main(props: MainProps) {
     const { authOptions } = useConnect();
     const { userSession } = authOptions;
     const welcomeRoute = useRouteMatch("/welcome");
+    const videoPlayerRoute = useRouteMatch("/videoplayer/")
     const browseImagesRoute = useRouteMatch("/images/browse");
     const [slideShowIndex, setSlideShowIndex] = useState<number | null>(null);
     const [progressMessage, setProgressMessage] = useState<string | null>(null);
@@ -160,7 +161,7 @@ export default function Main(props: MainProps) {
             setProgressSubMessage(null);
         }
     }, [promiseInProgress])
-    
+
     useEffect(() => {
         const refresh = async () => {
 
@@ -617,137 +618,156 @@ export default function Main(props: MainProps) {
         </AppBar>
     )
 
+    const body = window?.document?.body;
+    if (body) {
+        if (userSession?.isUserSignedIn() || videoPlayerRoute) {
+            body.style.backgroundImage = "none";
+        }
+        else {
+            body.style.backgroundImage = "url(/welcome.jpg)"
+        }
+    }
     return (
         <Fragment>
             <ConfirmDialog open={confirmResetCacheOpen} item={null} onResult={resetCacheConfirmResult} title="Confirm Reset Cache" message={`Are you sure you want to reset your cached indexes?`} />
             <ConfirmDialog open={confirmDeleteAllOpen} item={null} onResult={deleteAllConfirmResult} title="Confirm Delete All" message={`Are you sure you want to delete all of your Gaideo data?`} />
-            <div style={{ backgroundImage: userSession?.isUserSignedIn() ? 'none' : 'url(/welcome.jpg)' }}>
-                {isMobile ? (
-                    <HideOnScroll>
-                        {appBar}
-                    </HideOnScroll>
-                ) : appBar}
-                <ProfileDialog userName={props.userData?.username} open={profileOpen} setProfileDialogOpenCallback={setProfileDialogOpenCallback} />
-                <div className={classes.content} style={{ marginLeft: welcomeRoute ? 0 : undefined }}>
+            {videoPlayerRoute ? (
+                <Switch>
+                    <Route path="/videoplayer/:access/:owner/:id">
+                        <VideoPlayer isMobile={isMobile} />
+                    </Route>
+                </Switch>
+            )
+                : (
+                    <div>
+                        {isMobile ? (
+                            <HideOnScroll>
+                                {appBar}
+                            </HideOnScroll>
+                        ) : appBar}
+                        <ProfileDialog userName={props.userData?.username} open={profileOpen} setProfileDialogOpenCallback={setProfileDialogOpenCallback} />
+                        <div className={classes.content} style={{ marginLeft: welcomeRoute ? 0 : undefined }}>
 
-                    <div style={{ paddingTop: browseImagesRoute && slideShowIndex != null ? 0 : 18, paddingLeft: 0, paddingRight: 0 }}>
-                        <Friends show={showFriends} showCallback={showFriendsCallback} isMobile={isMobile} saveSelectedFriendsCallback={saveSelectedFriendsCallback} />
-                        <Playlists show={showPlaylists} showCallback={showPlaylistsCallback} isMobile={isMobile} saveSelectedPlaylistCallback={saveSelectedPlaylistCallback} />
-                        <Search show={showSearch} showCallback={showSearchCallback} isMobile={isMobile} setSearchTextCallback={setSearchTextCallback} />
+                            <div style={{ paddingTop: browseImagesRoute && slideShowIndex != null ? 0 : 18, paddingLeft: 0, paddingRight: 0 }}>
+                                <Friends show={showFriends} showCallback={showFriendsCallback} isMobile={isMobile} saveSelectedFriendsCallback={saveSelectedFriendsCallback} />
+                                <Playlists show={showPlaylists} showCallback={showPlaylistsCallback} isMobile={isMobile} saveSelectedPlaylistCallback={saveSelectedPlaylistCallback} />
+                                <Search show={showSearch} showCallback={showSearchCallback} isMobile={isMobile} setSearchTextCallback={setSearchTextCallback} />
 
-                        <Switch>
-                            <Route path="/videos/show/:access/:id/:owner">
-                                {userSession?.isUserSignedIn() ? (
-                                    <VideoPlayer isMobile={isMobile} />
-                                ) : (
+                                <Switch>
+                                    <Route path="/videos/show/:access/:id/:owner">
+                                        {userSession?.isUserSignedIn() ? (
+                                            <VideoPlayer isMobile={isMobile} />
+                                        ) : (
+                                                <Welcome />
+                                            )
+                                        }
+                                    </Route>
+                                    <Route path="/videos/browse">
+                                        {userSession?.isUserSignedIn() ? (
+                                            <div style={{ paddingTop: !showFriends && !showPlaylists ? 30 : 10 }}>
+                                                <BrowseVideos
+                                                    videos={videos}
+                                                    videosLoadedCallback={videosLoadedCallback}
+                                                    db={props.db}
+                                                    worker={props.worker}
+                                                    updateProgressCallback={updateProgressCallback}
+                                                    isMobile={isMobile}
+                                                    searchText={searchText} />
+                                            </div>
+                                        ) : (
+                                                <Welcome />
+                                            )
+                                        }
+                                    </Route>
+                                    <Route path="/images/browse">
+                                        {userSession?.isUserSignedIn() ? (
+                                            <div style={{ paddingTop: !showFriends && !showPlaylists ? 25 : 5 }}>
+                                                <BrowseImages
+                                                    photos={photos}
+                                                    imagesLoadedCallback={imagesLoadedCallback}
+                                                    toggleCloseCallback={toggleCloseCallback}
+                                                    slideShowIndex={slideShowIndex}
+                                                    setSlideShowIndexCallback={setSlideShowIndexCallback}
+                                                    db={props.db}
+                                                    worker={props.worker}
+                                                    isMobile={isMobile}
+                                                    updateProgressCallback={updateProgressCallback}
+                                                    searchText={searchText} />
+                                            </div>
+                                        ) : (
+                                                <Welcome />
+                                            )
+                                        }
+                                    </Route>
+                                    <Route path="/publish/:type/:id">
+                                        {userSession?.isUserSignedIn() ? (
+                                            <PublishVideo
+                                                worker={props.worker}
+                                                videos={videos}
+                                                photos={photos}
+                                                isMobile={isMobile}
+                                                videosLoadedCallback={videosLoadedCallback}
+                                                imagesLoadedCallback={imagesLoadedCallback}
+                                                updateProgressCallback={updateProgressCallback}
+                                            />
+                                        ) : (
+                                                <Welcome />
+                                            )
+                                        }
+                                    </Route>
+                                    <Route path="/publish">
+                                        {userSession?.isUserSignedIn() ? (
+                                            <PublishVideo
+                                                worker={props.worker}
+                                                videos={videos}
+                                                photos={photos}
+                                                isMobile={isMobile}
+                                                videosLoadedCallback={videosLoadedCallback}
+                                                imagesLoadedCallback={imagesLoadedCallback}
+                                                updateProgressCallback={updateProgressCallback}
+                                            />
+                                        ) : (
+                                                <Welcome />
+                                            )
+                                        }
+                                    </Route>
+                                    <Route path="/encrypt">
+                                        {userSession?.isUserSignedIn() ? (
+                                            <div style={{ paddingTop: 50, paddingLeft: !isMobile ? 22 : 0 }}>
+                                                <VideoEncryption />
+                                            </div>
+                                        ) : (
+                                                <Welcome />
+                                            )
+                                        }
+                                    </Route>
+                                    <Route path="/contactus">
+                                        {userSession?.isUserSignedIn() ? (
+                                            <div style={{ paddingTop: 50, paddingLeft: !isMobile ? 22 : 0 }}>
+                                                <ContactUs />
+                                            </div>
+                                        ) : (
+                                                <Welcome />
+                                            )
+                                        }
+                                    </Route>
+                                    <Route path="/">
+                                        {userSession?.isUserSignedIn() ? (
+                                            <Redirect to="/videos/browse" />
+                                        ) : (
+                                                <Welcome />
+                                            )
+                                        }
+                                    </Route>
+                                    <Route path="/welcome">
                                         <Welcome />
-                                    )
-                                }
-                            </Route>
-                            <Route path="/videos/browse">
-                                {userSession?.isUserSignedIn() ? (
-                                    <div style={{ paddingTop: !showFriends && !showPlaylists ? 30 : 10 }}>
-                                        <BrowseVideos
-                                            videos={videos}
-                                            videosLoadedCallback={videosLoadedCallback}
-                                            db={props.db}
-                                            worker={props.worker}
-                                            updateProgressCallback={updateProgressCallback}
-                                            isMobile={isMobile}
-                                            searchText={searchText} />
-                                    </div>
-                                ) : (
-                                        <Welcome />
-                                    )
-                                }
-                            </Route>
-                            <Route path="/images/browse">
-                                {userSession?.isUserSignedIn() ? (
-                                    <div style={{ paddingTop: !showFriends && !showPlaylists ? 25 : 5 }}>
-                                        <BrowseImages
-                                            photos={photos}
-                                            imagesLoadedCallback={imagesLoadedCallback}
-                                            toggleCloseCallback={toggleCloseCallback}
-                                            slideShowIndex={slideShowIndex}
-                                            setSlideShowIndexCallback={setSlideShowIndexCallback}
-                                            db={props.db}
-                                            worker={props.worker}
-                                            isMobile={isMobile}
-                                            updateProgressCallback={updateProgressCallback}
-                                            searchText={searchText} />
-                                    </div>
-                                ) : (
-                                        <Welcome />
-                                    )
-                                }
-                            </Route>
-                            <Route path="/publish/:type/:id">
-                                {userSession?.isUserSignedIn() ? (
-                                    <PublishVideo
-                                        worker={props.worker}
-                                        videos={videos}
-                                        photos={photos}
-                                        isMobile={isMobile}
-                                        videosLoadedCallback={videosLoadedCallback}
-                                        imagesLoadedCallback={imagesLoadedCallback}
-                                        updateProgressCallback={updateProgressCallback}
-                                    />
-                                ) : (
-                                        <Welcome />
-                                    )
-                                }
-                            </Route>
-                            <Route path="/publish">
-                                {userSession?.isUserSignedIn() ? (
-                                    <PublishVideo
-                                        worker={props.worker}
-                                        videos={videos}
-                                        photos={photos}
-                                        isMobile={isMobile}
-                                        videosLoadedCallback={videosLoadedCallback}
-                                        imagesLoadedCallback={imagesLoadedCallback}
-                                        updateProgressCallback={updateProgressCallback}
-                                    />
-                                ) : (
-                                        <Welcome />
-                                    )
-                                }
-                            </Route>
-                            <Route path="/encrypt">
-                                {userSession?.isUserSignedIn() ? (
-                                    <div style={{ paddingTop: 50, paddingLeft: !isMobile ? 22 : 0 }}>
-                                        <VideoEncryption />
-                                    </div>
-                                ) : (
-                                        <Welcome />
-                                    )
-                                }
-                            </Route>
-                            <Route path="/contactus">
-                                {userSession?.isUserSignedIn() ? (
-                                    <div style={{ paddingTop: 50, paddingLeft: !isMobile ? 22 : 0 }}>
-                                        <ContactUs />
-                                    </div>
-                                ) : (
-                                        <Welcome />
-                                    )
-                                }
-                            </Route>
-                            <Route path="/">
-                                {userSession?.isUserSignedIn() ? (
-                                    <Redirect to="/videos/browse" />
-                                ) : (
-                                        <Welcome />
-                                    )
-                                }
-                            </Route>
-                            <Route path="/welcome">
-                                <Welcome />
-                            </Route>
-                        </Switch>
+                                    </Route>
+                                </Switch>
+                            </div>
+                        </div>
                     </div>
-                </div>
-            </div>
+                )}
+
         </Fragment>
     );
 }
