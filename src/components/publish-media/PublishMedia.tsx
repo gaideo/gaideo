@@ -12,7 +12,7 @@ import { useConnect } from '@blockstack/connect';
 import { trackPromise } from 'react-promise-tracker';
 import { useHistory, useParams } from 'react-router-dom';
 import { createHashAddress, createPrivateKey, updateMasterIndex, getPrivateKey } from '../../utilities/gaia-utils';
-import { deleteVideoEntry, ImagesType, loadBrowseEntry, UnencryptedVideosType, VideosType } from '../../utilities/media-utils';
+import { deleteVideoEntry, ImagesType, loadBrowseEntry, UnencryptedVideosType, VideosType, MusicType } from '../../utilities/media-utils';
 import { computeAge, getNow } from '../../utilities/time-utils';
 import { getPublicKeyFromPrivate, makeUUID4, UserSession } from 'blockstack';
 import { BrowseEntry } from '../../models/browse-entry';
@@ -44,8 +44,10 @@ interface PublishVideoProps {
     worker: Worker | null;
     videos: BrowseEntry[] | null;
     photos: Photo[] | null;
+    songs: BrowseEntry[] | null;
     videosLoadedCallback: VideosLoadedCallback;
     imagesLoadedCallback: ImagesLoadedCallback;
+    songsLoadedCallback: VideosLoadedCallback;
     isMobile: boolean;
     updateProgressCallback: UpdateProgressCallback;
 }
@@ -214,6 +216,7 @@ export default function PublishVideo(props: PublishVideoProps) {
         return lname.endsWith('.mp4')
             || lname.endsWith('.mov')
             || lname.endsWith('.mkv')
+            || lname.endsWith('.mp3')
             || lname.endsWith('.avi');
     }
 
@@ -252,7 +255,7 @@ export default function PublishVideo(props: PublishVideoProps) {
                     && !unencryptedVideo
                     && !previewImage
                     && !imageName) {
-                    errorMessage = "Unrecognized file type.  Supported file types are: .mp4, .mov, .avi, .mkv, .m3u8, .ts, key.bin, .jpg, .jpeg, and .png";
+                    errorMessage = "Unrecognized file type.  Supported file types are: .mp4, .mp3, .mov, .avi, .mkv, .m3u8, .ts, key.bin, .jpg, .jpeg, and .png";
                     hasError = true;
                     break;
                 }
@@ -389,7 +392,7 @@ export default function PublishVideo(props: PublishVideoProps) {
 
     const uploadVideo = async (file: any, metaData: MediaMetaData, userSession: UserSession, privateKey: string) => {
         try {
-            let name: string = `videos/${metaData.id}/${file.name}`;
+            let name: string = `${metaData.type}/${metaData.id}/${file.name}`;
             if (needEncryptVideoFile(file.name)) {
                 let data;
                 if (file.data) {
@@ -543,12 +546,12 @@ export default function PublishVideo(props: PublishVideoProps) {
     }
 
     const saveVideoFiles = async (userSession: UserSession, metaData: MediaMetaData, files: any[]) => {
-        let fname = `videos/${metaData.id}.index`;
+        let fname = `${metaData.type}/${metaData.id}.index`;
 
         props.updateProgressCallback(`Uploading index file...`, null);
         let privateKey = '';
         if (!isPublic) {
-            privateKey = await createPrivateKey(userSession, metaData.id, VideosType);
+            privateKey = await createPrivateKey(userSession, metaData.id, metaData.type);
         }
         if (privateKey || isPublic) {
             let data = JSON.stringify(metaData);
@@ -682,6 +685,22 @@ export default function PublishVideo(props: PublishVideoProps) {
                             }
                         }
                         history.push('/images/browse');
+                    }
+                    else if (type === MusicType) {
+                        if (props.songs) {
+                            for (let i = 0; i < props.songs?.length; i++) {
+                                let video = props.songs[i];
+                                if (video.metaData.id === be.metaData.id) {
+                                    let newVideo = { ...video, metaData: be.metaData };
+                                    newVideo.age = computeAge(be.metaData.lastUpdatedUTC);
+                                    let newSongs = props.songs.slice();
+                                    newSongs.splice(i, 1);
+                                    newSongs.unshift(newVideo);
+                                    props.songsLoadedCallback(newSongs);
+                                }
+                            }
+                        }
+                        history.push('/music/browse');
                     }
                     else {
                         if (props.videos) {

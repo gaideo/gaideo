@@ -1,12 +1,15 @@
-import React, { Fragment, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useConnect } from '@blockstack/connect';
 import Hls from "hls.js";
 import "../browse-videos/BrowseVideos.css";
-import { useParams, useLocation } from 'react-router-dom';
+import { useParams, useLocation, useHistory } from 'react-router-dom';
 import { VideoDescription } from './VideoDescription';
 import { getEncryptedFile } from '../../utilities/gaia-utils';
 import { getImageSize } from '../../utilities/image-utils';
-import { VideosType } from '../../utilities/media-utils';
+import { IDBPDatabase } from 'idb';
+import { getPlaylistEntries, loadBrowseEntry } from '../../utilities/media-utils';
+import { EditPlaylistEntry } from '../../models/edit-playlist-entry';
+import PlaylistDetail from '../playlists/PlaylistDetail';
 
 interface VideoPlayerContext {
   current: any;
@@ -15,23 +18,30 @@ interface VideoPlayerContext {
 interface ParamTypes {
   id: string;
   owner?: string;
-  access?: string
+  access?: string;
+  type: string;
 }
 
 interface VideoPlayerProps {
-  isMobile: boolean
+  isMobile: boolean,
+  db?: IDBPDatabase<unknown> | null | undefined;
 }
 
 export function VideoPlayer(props: VideoPlayerProps) {
   const { authOptions } = useConnect();
   const { userSession } = authOptions;
-  const { access, id, owner } = useParams<ParamTypes>();
+  const { access, type, id, owner } = useParams<ParamTypes>();
   const videoRef = useRef<HTMLVideoElement>(null);
   const location = useLocation();
   const [width, setWidth] = useState<number | undefined>();
   const [height, setHeight] = useState<number | undefined>();
   const [showDescription, setShowDescription] = useState(false);
+  const [playlistId, setPlaylistId] = useState('');
+  const [playlistEntries, setPlaylistEntries] = useState<Array<EditPlaylistEntry>>([]);
+  const [playlistIndex, setPlaylistIndex] = useState(-1);
+  const [autoPlay, setAutoPlay] = useState(true);
 
+  const history = useHistory();
 
   useEffect(() => {
 
@@ -79,12 +89,11 @@ export function VideoPlayer(props: VideoPlayerProps) {
           && validIDRegex.test(id)
           && validHostRegex.test(owner)) {
           setSize();
-          source = `https://${owner}${path}videos/${id}`;
+          source = `https://${owner}${path}${type}/${id}`;
           if (!source.endsWith("/")) {
             source += '/';
           }
           source = `${source}master.m3u8`;
-          console.log(source);
         }
         if (source && videoRef?.current) {
           if (Hls.isSupported()) {
@@ -113,7 +122,7 @@ export function VideoPlayer(props: VideoPlayerProps) {
 
       }
     }
-  }, [access, owner, location.search, id])
+  }, [access, owner, location.search, id, type])
 
   useEffect(() => {
 
@@ -187,6 +196,21 @@ export function VideoPlayer(props: VideoPlayerProps) {
         }
 
         if (videoRef?.current) {
+          const playlistRegex = /playlist=([a-zA-Z0-9]{8}-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{12})/g
+          const playlistResult = playlistRegex.exec(location.search);
+          if (playlistResult?.length === 2) {
+            setPlaylistId(playlistResult[1]);
+            if (props.db) {
+              let indexFile = `${type}/${id}.index`;
+              const entries = await getPlaylistEntries(userSession, props.db, playlistResult[1], type);
+              for (let i = 0; i < entries.length; i++) {
+                if (entries[i].indexFile === indexFile) {
+                  setPlaylistIndex(i);
+                }
+              }
+              setPlaylistEntries(entries);
+            }
+          }
           let source: string | null = null;
           let videoKey: string | null = null;
           let userData = userSession.loadUserData();
@@ -195,12 +219,12 @@ export function VideoPlayer(props: VideoPlayerProps) {
             userName = owner;
           }
           if (access !== "public") {
-            videoKey = await getEncryptedFile(userSession, `videos/${id}/key.bin`, id, VideosType, false, userName) as string;
+            videoKey = await getEncryptedFile(userSession, `${type}/${id}/key.bin`, id, type, false, userName) as string;
             context.current.videoKey = videoKey;
           }
           setSize();
 
-          source = await userSession.getFileUrl(`videos/${id}/master.m3u8`, {
+          source = await userSession.getFileUrl(`${type}/${id}/master.m3u8`, {
             username: userName
           });
 
@@ -249,7 +273,9 @@ export function VideoPlayer(props: VideoPlayerProps) {
 
       }
 
-      playVideo();
+      if (props.db && userSession?.isUserSignedIn()) {
+        playVideo();
+      }
     }
     return function cleanup() {
       if (hls) {
@@ -267,21 +293,73 @@ export function VideoPlayer(props: VideoPlayerProps) {
         }
       }
     }
-  }, [userSession, location.search, id, owner, access]);
+  }, [userSession, location.search, id, owner, access, type, props.db]);
 
+  const playNext = async () => {
+    if (autoPlay && playlistId && userSession?.isUserSignedIn()) {
+      let index = 0;
+      if (playlistIndex >= 0) {
+        index = playlistIndex + 1;
+      }
+      if (index >= playlistEntries.length) {
+        index = 0;
+      }
+      setPlayEntryCallback(index);
+    }
+  }
+
+  const setPlaylistEntriesCallback = useCallback((newPlaylistEntries: EditPlaylistEntry[]) => {
+    setPlaylistEntries(newPlaylistEntries);
+  }, []);
+
+  const setPlayEntryCallback = useCallback(async (index: number) => {
+    let entry = playlistEntries[index];
+    let currentIndexFile = `${type}/${id}.index`;
+    if (userSession && currentIndexFile !== entry.indexFile) {
+      let ud = userSession.loadUserData();
+      let userName: string | undefined = entry.userName;
+      if (userName === ud.username) {
+        userName = undefined;
+      }
+      let browseEntry = await loadBrowseEntry(userSession, entry.indexFile, false, userName);
+      if (browseEntry) {
+        let user = '';
+
+        if (browseEntry.metaData.userName) {
+          user = `/${browseEntry.metaData.userName}`;
+        }
+        setPlaylistIndex(index);
+        const access = browseEntry.metaData.isPublic ? "public" : "private";
+        let url = `/videos/show/${access}/${browseEntry.metaData.type}/${browseEntry.metaData.id}${user}?height=${browseEntry.actualHeight}&width=${browseEntry.actualWidth}&playlist=${playlistId}`;
+        history.push(url);
+
+      }
+    }
+  }, [userSession, history, id, playlistEntries, playlistId, type]);
+
+  const setAutoPlayCallback = useCallback((value: boolean) => {
+    setAutoPlay(value);
+  }, []);
 
   return (
-    <Fragment>
+    <div style={{ display: 'flex', flexDirection: props.isMobile ? 'column' : 'row' }}>
       {Hls.isSupported() &&
-        <div style={{ paddingTop: !Hls.isSupported() ? 22 : 0, paddingLeft: props.isMobile ? 0 : 22 }}>
+        <div style={{ flex: '1 1 auto', paddingTop: !Hls.isSupported() ? 22 : 0, paddingLeft: props.isMobile ? 0 : 22 }}>
           <video
             ref={videoRef}
             id="video"
             width="100%"
-            style={{ maxWidth: width, maxHeight: height }}
-            controls></video>
+            style={{ border: 'none', maxWidth: width, maxHeight: height }}
+            controls
+            onEnded={() => playNext()}></video>
           {showDescription &&
-            <VideoDescription />
+            <div style={{ maxWidth: width, maxHeight: height }}>
+              <VideoDescription
+                playlistId={playlistId}
+                autoPlay={autoPlay}
+                setAutoPlayCallback={setAutoPlayCallback}
+              />
+            </div>
           }
         </div>
       }
@@ -293,11 +371,28 @@ export function VideoPlayer(props: VideoPlayerProps) {
             autoPlay
             ref={videoRef}
             id="video"
-            controls></video>
+            controls
+            onEnded={() => playNext()}></video>
           {showDescription &&
-            <VideoDescription />
+            <div style={{ maxWidth: width, maxHeight: height }}>
+              <VideoDescription playlistId={playlistId} autoPlay={autoPlay} setAutoPlayCallback={setAutoPlayCallback} />
+            </div>
           }
         </div>}
-    </Fragment>
+      {playlistId &&
+        <div style={{ paddingTop: props.isMobile ? 0 : 22 }}>
+          <div style={{ height: '100%', marginTop: props.isMobile ? 0 : 10, marginLeft: 10, paddingLeft: 10, paddingRight: 10, marginRight: 10, maxWidth: 350, borderStyle: 'solid', borderWidth: 1, borderColor: 'darkgrey' }}>
+            <PlaylistDetail
+              selectedIndex={playlistIndex}
+              playlistId={playlistId}
+              playlistEntries={playlistEntries}
+              setPlaylistEntriesCallback={setPlaylistEntriesCallback}
+              setPlayEntryCallback={setPlayEntryCallback}
+              disableEdit={true}
+            ></PlaylistDetail>
+          </div>
+        </div>
+      }
+    </div>
   );
 }

@@ -6,12 +6,14 @@ import CloseIcon from '@material-ui/icons/Close';
 import AsyncSelect from 'react-select/async';
 import makeAnimated from 'react-select/animated';
 import { Icon } from '@material-ui/core';
-import { getGroup, getGroups, getSelectedGroup, updateGroup } from '../../utilities/gaia-utils';
+import { getGroup, getGroups, getSelectedGroup, saveGroupIndex, updateGroup, defaultMaxSort } from '../../utilities/gaia-utils';
 import { useConnect } from '@blockstack/connect';
 import { trackPromise } from 'react-promise-tracker';
 import ConfirmDialog from '../confirm-dialog/ConfirmDialog';
 import { Group } from '../../models/group';
 import AddPlaylistDialog from './AddPlaylistDialog';
+import { IDBPDatabase } from 'idb';
+import { EditPlaylistEntry } from '../../models/edit-playlist-entry';
 
 
 interface ShowCallback {
@@ -27,6 +29,7 @@ interface PlaylistsProps {
     showCallback: ShowCallback;
     isMobile: boolean;
     saveSelectedPlaylistCallback: SaveSelectedPlaylistCallback;
+    db?: IDBPDatabase<unknown> | null | undefined;
 }
 
 export function Playlists(props: PlaylistsProps) {
@@ -95,7 +98,7 @@ export function Playlists(props: PlaylistsProps) {
 
     const saveSelectedPlaylistCallback = props.saveSelectedPlaylistCallback;
 
-    const updatePlaylistCallback = useCallback(async (playlist: Group, deleteFlag: boolean, id: string | undefined) => {
+    const updatePlaylistCallback = useCallback(async (playlist: Group, deleteFlag: boolean, id: string | undefined, entries: EditPlaylistEntry[] | undefined) => {
         if (userSession?.isUserSignedIn()) {
             await updateGroup(userSession, playlist, deleteFlag);
             let updated = await getGroups(userSession);
@@ -121,17 +124,32 @@ export function Playlists(props: PlaylistsProps) {
                 setSelectedPlaylist({
                     ...selectedPlaylist, label: playlist.name
                 })
+                let groupIndex: any = {
+
+                };
+                if (entries) {
+                    for (let i=0; i<entries.length; i++) {
+                        let sort = `${i}`;
+                        let padLength = (defaultMaxSort.length - sort.length);
+                        let pad = '';
+                        for (let j=0; j<padLength; j++) {
+                            pad += '0';
+                        }
+                        groupIndex[entries[i].indexFile] = `${entries[i].userName},${pad}${i}`;
+                    }
+                }
+                await saveGroupIndex(userSession, playlist.id, groupIndex);
             }
         }
 
     }, [userSession, selectedPlaylist, saveSelectedPlaylistCallback])
 
-    const setAddPlaylistDialogOpenCallback = useCallback((open: boolean, playlist: Group | null, editID: string | undefined) => {
+    const setAddPlaylistDialogOpenCallback = useCallback((open: boolean, playlist: Group | null, editID: string | undefined, entries: EditPlaylistEntry[] | undefined) => {
         setOpenAdd(open);
         if (!open
             && playlist
             && userSession?.isUserSignedIn()) {
-            trackPromise(updatePlaylistCallback(playlist, false, editID));
+            trackPromise(updatePlaylistCallback(playlist, false, editID, entries));
         }
 
     }, [userSession, updatePlaylistCallback]);
@@ -184,7 +202,7 @@ export function Playlists(props: PlaylistsProps) {
                 }
                 if (userSession?.isUserSignedIn() && playlist) {
                     setSelectedPlaylist(null);
-                    trackPromise(updatePlaylistCallback(playlist, true, undefined));
+                    trackPromise(updatePlaylistCallback(playlist, true, undefined, undefined));
                 }
             }
         }
@@ -195,7 +213,7 @@ export function Playlists(props: PlaylistsProps) {
             {props.show &&
                 <Fragment>
                     <ConfirmDialog open={confirmDeletePlaylistOpen} item={selectedPlaylist} onResult={deleteConfirmResult} title="Confirm Delete" message={`Are you sure you want to delete the selected playlist?`} />
-                    <AddPlaylistDialog open={openAdd} id={editID} setAddPlaylistDialogOpenCallback={setAddPlaylistDialogOpenCallback} />
+                    <AddPlaylistDialog open={openAdd} id={editID} setAddPlaylistDialogOpenCallback={setAddPlaylistDialogOpenCallback} db={props.db} />
                     <div style={{ display: 'flex', flexDirection: 'row' }}>
                         <div style={{ flex: '1 1 auto' }}>
                             <AsyncSelect

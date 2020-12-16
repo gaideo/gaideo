@@ -37,8 +37,16 @@ const initializeDatabase = async () => {
 const createMasterIndex = async () => {
     let masterIndex = {};
     await userSession.listFiles(name => {
-        if ((name.startsWith("videos/") || name.startsWith("images/"))
-            && name.endsWith('.index')) {
+        let foundMediaFile = false;
+        if (fileTypes) {
+            for (let i=0; i<fileTypes.length; i++) {
+                if (name.startsWith(`${fileTypes[i]}/`)) {
+                    foundMediaFile = true;
+                    break;
+                }
+            }
+        }
+        if (foundMediaFile && name.endsWith('.index')) {
             masterIndex[name] = null;
         }
         return true;

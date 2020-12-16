@@ -9,7 +9,7 @@ import Main from './components/main/Main';
 import { createMuiTheme, ThemeOptions, ThemeProvider } from '@material-ui/core';
 import { UserData } from 'blockstack/lib/auth/authApp';
 import { openDB, IDBPDatabase } from 'idb';
-import { ImagesType, VideosType } from './utilities/media-utils';
+import { ImagesType, VideosType, MusicType } from './utilities/media-utils';
 
 const userSession = new UserSession({ appConfig });
 
@@ -69,7 +69,7 @@ export default function App() {
                 sessionData: sessionData,
                 location: document.location.href,
                 origin: document.location.origin,
-                fileTypes: [VideosType, ImagesType]
+                fileTypes: [VideosType, ImagesType, MusicType]
               })
             }
             break;
@@ -83,6 +83,9 @@ export default function App() {
                   }
                   else if (key === ImagesType) {
                     setNewPhotosCount(count);
+                  }
+                  else if (key === MusicType) {
+                    setNewMusicCount(count);
                   }
                 }
               }
@@ -109,6 +112,7 @@ export default function App() {
   const [userData, setUserData] = useState<UserData | null>(null);
   const [newVideosCount, setNewVideosCount] = useState(0);
   const [newPhotosCount, setNewPhotosCount] = useState(0);
+  const [newMusicCount, setNewMusicCount] = useState(0);
 
   const themeConfig = createMuiTheme(themeObject);
   const authOptions = {
@@ -150,6 +154,10 @@ export default function App() {
     setNewPhotosCount(count);
   }, []);
 
+  const setNewMusicCountCallback = useCallback((count: number) => {
+    setNewMusicCount(count);
+  }, []);
+
   return (
     <ThemeProvider theme={themeConfig}>
       <Connect authOptions={authOptions}>
@@ -164,6 +172,8 @@ export default function App() {
             setNewVideosCountCallback={setNewVideosCountCallback}
             newPhotosCount={newPhotosCount}
             setNewPhotosCountCallback={setNewPhotosCountCallback}
+            newMusicCount={newMusicCount}
+            setNewMusicCountCallback={setNewMusicCountCallback}
             />
         </HashRouter>
       </Connect>

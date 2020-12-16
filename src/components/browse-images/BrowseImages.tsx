@@ -101,8 +101,24 @@ export function BrowseImages(props: BrowseImagesProps) {
 
             }
         }
+        const setContext = async () => {
+            if (worker && db && userSession?.isUserSignedIn()) {
+                if (!props.searchText || props.searchText.trim().length === 0) {
+                    let sp = await getSelectedGroup(userSession);
+                    if (!sp) {
+                        let sf = await getSelectedShares(userSession);
+                        setSelectedFriends(sf);
+                    }
+                    setSelectedPlaylist(sp);
+                }
+            }
+        }
+
         if (photos.length === 0) {
             refresh();
+        }
+        else {
+            setContext();
         }
     }, [userSession, photos, db, imagesLoadedCallback, worker, props.searchText]);
 

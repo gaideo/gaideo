@@ -5,9 +5,9 @@ import { BrowseEntry } from '../../models/browse-entry';
 import "./BrowseVideos.css";
 import MenuItem from '@material-ui/core/MenuItem';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
-import { useHistory, useLocation } from 'react-router-dom';
+import { useHistory } from 'react-router-dom';
 import { getCacheEntries, getShares, shareFile, getSelectedShares, getSelectedGroup, addToGroup, getCacheEntriesFromGroup, removeFromGroup, isFileShared, getCacheEntriesFromSearch } from '../../utilities/gaia-utils';
-import { deleteVideoEntry, VideosType, loadBatchVideos } from '../../utilities/media-utils';
+import { deleteVideoEntry, loadBatchVideos } from '../../utilities/media-utils';
 import ConfirmDialog from '../confirm-dialog/ConfirmDialog';
 import CopyDialog from '../copy-dialog/CopyDialog';
 import ShareUserDialog from '../share-user-dialog/ShareUserDialog';
@@ -33,6 +33,7 @@ interface BrowseVideosProps {
     updateProgressCallback: UpdateProgressCallback;
     isMobile: boolean;
     searchText: string;
+    mediaType: string;
 }
 
 export function BrowseVideos(props: BrowseVideosProps) {
@@ -53,7 +54,6 @@ export function BrowseVideos(props: BrowseVideosProps) {
     const [selectedPlaylist, setSelectedPlaylist] = React.useState<string | null>(null);
     const [addToPlaylistOpen, setAddToPlaylistOpen] = React.useState(false);
     const [noResults, setNoResults] = React.useState(false);
-    const location = useLocation();
 
     const db = props.db;
     const worker = props.worker;
@@ -64,22 +64,22 @@ export function BrowseVideos(props: BrowseVideosProps) {
 
         const refresh = async () => {
             let arr: BrowseEntry[] = [];
-            if (worker && db && userSession?.isUserSignedIn()) {
+            if (worker && db && props.mediaType && userSession?.isUserSignedIn()) {
                 setLoadingMore(true);
                 try {
                     let moreCacheResults;
                     if (props.searchText && props.searchText.trim().length > 0) {
-                        moreCacheResults = await getCacheEntriesFromSearch(db, VideosType, props.searchText, MAX_MORE, null);
+                        moreCacheResults = await getCacheEntriesFromSearch(db, props.mediaType, props.searchText, MAX_MORE, null);
                     }
                     else {
                         let sp = await getSelectedGroup(userSession);
                         if (sp) {
-                            moreCacheResults = await getCacheEntriesFromGroup(userSession, db, VideosType, worker, sp, MAX_MORE, null);
+                            moreCacheResults = await getCacheEntriesFromGroup(userSession, db, props.mediaType, worker, sp, MAX_MORE, null);
                         }
                         else {
                             let sf = await getSelectedShares(userSession);
                             setSelectedFriends(sf);
-                            moreCacheResults = await getCacheEntries(userSession, db, VideosType, MAX_MORE, null, sf);
+                            moreCacheResults = await getCacheEntries(userSession, db, props.mediaType, MAX_MORE, null, sf);
                         }
                         setSelectedPlaylist(sp);
                     }
@@ -110,10 +110,26 @@ export function BrowseVideos(props: BrowseVideosProps) {
 
             }
         }
+        const setContext = async () => {
+            if (worker && db && props.mediaType && userSession?.isUserSignedIn()) {
+                if (!props.searchText || props.searchText.trim().length === 0) {
+                    let sp = await getSelectedGroup(userSession);
+                    if (!sp) {
+                        let sf = await getSelectedShares(userSession);
+                        setSelectedFriends(sf);
+                    }
+                    setSelectedPlaylist(sp);
+                }
+            }
+        }
+
         if (videos.length === 0) {
             refresh();
         }
-    }, [userSession, db, videos, videosLoadedCallback, worker, props.searchText]);
+        else {
+            setContext();
+        }
+    }, [userSession, db, videos, videosLoadedCallback, worker, props.searchText, props.mediaType]);
 
     const loadMore = async () => {
         if (userSession && props.db && cacheResults && cacheResults.nextKey && cacheResults.nextPrimaryKey) {
@@ -122,13 +138,13 @@ export function BrowseVideos(props: BrowseVideosProps) {
                 let arr: BrowseEntry[] = props.videos;
                 let moreCacheResults;
                 if (props.searchText && props.searchText.trim().length > 0) {
-                    moreCacheResults = await getCacheEntriesFromSearch(props.db, VideosType, props.searchText, MAX_MORE, cacheResults);
+                    moreCacheResults = await getCacheEntriesFromSearch(props.db, props.mediaType, props.searchText, MAX_MORE, cacheResults);
                 }
                 else if (selectedPlaylist) {
-                    moreCacheResults = await getCacheEntriesFromGroup(userSession, props.db, VideosType, props.worker, selectedPlaylist, MAX_MORE, cacheResults);
+                    moreCacheResults = await getCacheEntriesFromGroup(userSession, props.db, props.mediaType, props.worker, selectedPlaylist, MAX_MORE, cacheResults);
                 }
                 else {
-                    moreCacheResults = await getCacheEntries(userSession, props.db, VideosType, MAX_MORE, cacheResults, selectedFriends);
+                    moreCacheResults = await getCacheEntries(userSession, props.db, props.mediaType, MAX_MORE, cacheResults, selectedFriends);
                 }
                 if (moreCacheResults.cacheEntries?.length > 0) {
                     for (let i = 0; i < moreCacheResults.cacheEntries?.length; i += 1) {
@@ -197,7 +213,11 @@ export function BrowseVideos(props: BrowseVideosProps) {
             user = `/${browseEntry.metaData.userName}`;
         }
         const access = browseEntry.metaData.isPublic ? "public" : "private";
-        history.push(`/videos/show/${access}/${browseEntry.metaData.id}${user}?height=${browseEntry.actualHeight}&width=${browseEntry.actualWidth}`)
+        let url = `/videos/show/${access}/${browseEntry.metaData.type}/${browseEntry.metaData.id}${user}?height=${browseEntry.actualHeight}&width=${browseEntry.actualWidth}`;
+        if (selectedPlaylist) {
+            url = `${url}&playlist=${selectedPlaylist}`;
+        }
+        history.push(url);
     }
 
     const handleClick = (event: React.MouseEvent<HTMLElement>, browseEntry: BrowseEntry) => {
@@ -324,13 +344,22 @@ export function BrowseVideos(props: BrowseVideosProps) {
             });
             if (source) {
                 const url = new URL(source);
-                source = `${window.location.origin}/#/videoplayer/public/${url.hostname}/${menuBrowseEntry.metaData.id}?path=${url.pathname}&height=${menuBrowseEntry.actualHeight}&width=${menuBrowseEntry.actualWidth}`
+                source = `${window.location.origin}/#/videoplayer/public/${menuBrowseEntry.metaData.type}/${url.hostname}/${menuBrowseEntry.metaData.id}?path=${url.pathname}&height=${menuBrowseEntry.actualHeight}&width=${menuBrowseEntry.actualWidth}`
                 console.log(source);
             }
             return source;
 
         }
         return ''
+    }
+
+    const getImageSrc = (browseEntry: BrowseEntry) => {
+        if (browseEntry.previewImage === "music.png") {
+            return "music.png"
+        }
+        else {
+            return `data:image/png;base64, ${browseEntry.previewImage}`
+        }
     }
 
     return (
@@ -344,13 +373,13 @@ export function BrowseVideos(props: BrowseVideosProps) {
 
                     <Toolbar style={{ flexWrap: 'wrap', justifyContent: 'space-around' }}>
                         {props.videos.map(x => (
-                            <div key={x.metaData.id}>
+                            <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center'}} key={x.metaData.id}>
                                 <div
                                     style={{
                                         display: 'flex',
                                         alignItems: 'center',
-                                        width: 331.734,
-                                        height: 173.641,
+                                        width: props.mediaType === 'music' ? 192 : 331.734,
+                                        height: props.mediaType === 'music' ? 192 : 173.641,
                                         overflow: 'hidden',
                                         cursor: 'pointer',
                                     }} onClick={() => { navVideo(x); }}>
@@ -360,7 +389,7 @@ export function BrowseVideos(props: BrowseVideosProps) {
                                         height={x.previewImageHeight}
                                         id={x.metaData.id}
                                         alt={x.metaData.title}
-                                        src={`data:image/png;base64, ${x.previewImage}`} />
+                                        src={getImageSrc(x)} />
                                 </div>
                                 <Toolbar style={{ paddingLeft: 5, justifyContent: 'space-between' }} disableGutters={true}>
                                     <div onClick={() => { navVideo(x) }}>

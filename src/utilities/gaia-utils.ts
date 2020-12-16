@@ -1,6 +1,6 @@
 import { getPublicKeyFromPrivate, lookupProfile, makeECPrivateKey, publicKeyToAddress, UserSession } from "blockstack";
 import { IDBPCursorWithValue, IDBPDatabase } from 'idb';
-import { CacheEntry, CacheResults } from "../models/cache-entry";
+import { CacheEntry, CacheResults, SortedCacheEntry } from "../models/cache-entry";
 import { UserData } from "blockstack/lib/auth/authApp";
 import { ShareUserEntry } from "../models/share-user-entry";
 import { FileRootInfo } from "../models/file-root-info";
@@ -11,6 +11,8 @@ import { FileMetaData } from "../models/file-meta-data";
 import { SavedSearch } from "../models/saved-search";
 import { SimpleTokenizer, StopWordsTokenizer } from "js-search";
 import { stemmer } from "./porter-stemmer";
+
+export const defaultMaxSort = '99999999'
 
 export async function getPublicKey(userData: UserData, userName: string | null | undefined) {
     let publicKey;
@@ -36,6 +38,19 @@ export function createHashAddress(values: string[]) {
     let ret = publicKeyToAddress(idBuffer);
     return ret;
 
+}
+
+export function getGroupIndexValues(data: string | undefined) {
+    let sort = defaultMaxSort;
+    let userName = data;
+    if (data) {
+        let index = data.lastIndexOf(",");
+        if (index >= 0) {
+            userName = data.substring(0, index);
+            sort = data.substring(index + 1);
+        }
+    }
+    return [userName, sort];
 }
 
 const getMasterIndex = async (userSession: UserSession, fileName: string, canCreate: boolean, isPublic: boolean) => {
@@ -290,6 +305,14 @@ export function getFileIDFromIndexFileName(fileName: string) {
     return null;
 }
 
+export function getTypeFromSection(section: string) {
+    let i = section.indexOf('_');
+    if (i >= 0 && i < section.length - 1) {
+        return section.substring(i + 1);
+    }
+    return '';
+}
+
 export function getTypeFromIndexFileName(fileName: string) {
     let i = fileName.indexOf('/');
     if (i >= 0) {
@@ -435,13 +458,14 @@ export async function getCacheEntriesFromSearch(
 export async function getCacheEntriesFromGroup(
     userSession: UserSession,
     db: IDBPDatabase<unknown>,
-    type: string,
+    type: string | null,
     gaiaWorker: Worker | null,
     groupid: string,
     max: number | null,
     cacheResults: CacheResults | null) {
 
     let allEntries: CacheEntry[] = [];
+    let sortAllEntries: SortedCacheEntry[] = [];
     let nextIndex: IDBValidKey | null = null;
     if (!cacheResults?.allEntries) {
         let ud = userSession.loadUserData();
@@ -451,8 +475,11 @@ export async function getCacheEntriesFromGroup(
         if (groupIndex) {
             for (let key in groupIndex) {
                 const currentType = getTypeFromIndexFileName(key);
-                if (currentType === type) {
-                    let uname = groupIndex[key];
+                if (!type || currentType === type) {
+                    let val = groupIndex[key]
+                    let parts = getGroupIndexValues(val);
+                    let uname = parts[0];
+                    let sort = parts[1];
                     if (uname && uname === ud.username) {
                         uname = undefined;
                     }
@@ -463,13 +490,16 @@ export async function getCacheEntriesFromGroup(
                     }
                     catch { }
                     if (entry) {
-                        allEntries.push(entry);
+                        sortAllEntries.push({
+                            sort: sort,
+                            cacheEntry: entry
+                        });
                     }
                     else {
                         missing.push({
                             groupid: groupid,
                             indexFile: key,
-                            userName: uname
+                            userName: uname ? uname : ''
                         });
                     }
                 }
@@ -481,23 +511,28 @@ export async function getCacheEntriesFromGroup(
                     groupid: groupid
                 });
             }
-            allEntries.sort((x, y) => {
+            sortAllEntries.sort((x, y) => {
                 if (!x && y) {
-                    return 1;
+                    return -1;
                 }
                 else if (x && !y) {
-                    return -1;
-                }
-                else if (x.lastUpdated < y.lastUpdated) {
                     return 1;
                 }
-                else if (x.lastUpdated > y.lastUpdated) {
-                    return -1;
-                }
                 else {
-                    return 0;
+                    let xs = x.sort ? x.sort : '';
+                    let ys = y.sort ? y.sort : '';
+                    if (xs < ys) {
+                        return -1;
+                    }
+                    else if (xs > ys) {
+                        return 1;
+                    }
+                    else {
+                        return 0;
+                    }
                 }
             })
+            allEntries = sortAllEntries.map(x => x.cacheEntry);
         }
     }
     else {
@@ -1011,7 +1046,7 @@ export async function addToGroup(fileEntries: FileMetaData[], userSession: UserS
                     for (let j = 0; j < fileEntries.length; j++) {
                         const metaData = fileEntries[j];
                         const indexFile = `${metaData.type}/${metaData.id}.index`;
-                        groupIndex[indexFile] = metaData.userName;
+                        groupIndex[indexFile] = `${metaData.userName},${defaultMaxSort}`;
                     }
                     await saveGroupIndex(userSession, groupids[i], groupIndex);
 

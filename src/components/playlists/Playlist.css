@@ -1,0 +1,9 @@
+.MuiDialog-paper {
+  margin: 0px !important;
+  margin-top: 0px !important;
+  margin-right: 0px !important;
+  margin-bottom: 0px !important;
+  margin-left: 0px !important;
+  position: relative;
+  overflow-y: auto;
+}

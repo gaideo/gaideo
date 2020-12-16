@@ -7,7 +7,7 @@ export function VideoEncryption() {
                 <Paper style={{padding: 20}}>
             <Typography variant="h5" paragraph>Encrypt Videos</Typography>
             <Typography variant="subtitle1" paragraph>
-                Gaidea supports encrypting .mp4, .mov, .mkv, and .avi video files natively in the browser using a javascript library built from ffmpeg.  This method works but the performance is significantly slower than encrypting with our docker image. 
+                Gaidea supports encrypting .mp4, .mp3, .mov, .mkv, and .avi video files natively in the browser using a javascript library built from ffmpeg.  This method works but the performance is significantly slower than encrypting with our docker image. 
                 Although it requires more technical ability, it may be worth learning this method if your videos are very large.
                 <br/><br/>
                 A docker image has been created with all of the necessary tools and scripts to encrypt videos on your PC. 

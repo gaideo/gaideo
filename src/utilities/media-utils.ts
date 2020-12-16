@@ -3,15 +3,18 @@ import { BrowseEntry } from "../models/browse-entry";
 import { ImagesLoadedCallback, UpdateProgressCallback, VideosLoadedCallback } from "../models/callbacks";
 import { FileOperation } from "../models/file-operation";
 import { MediaMetaData } from "../models/media-meta-data";
-import { updateMasterIndex, getShareRootInfo, getEncryptedFile, getPrivateKey, getFileIDFromIndexFileName, getTypeFromIndexFileName } from "./gaia-utils";
+import { updateMasterIndex, getShareRootInfo, getEncryptedFile, getPrivateKey, getFileIDFromIndexFileName, getTypeFromIndexFileName, getCacheEntriesFromGroup, getTypeFromSection } from "./gaia-utils";
 import { base64ArrayBuffer } from "./encoding-utils";
 import { computeAge, sleep } from "./time-utils";
 import { CacheEntry } from "../models/cache-entry";
 import { getImageSize } from "./image-utils";
 import { Photo } from "../models/photo";
+import { IDBPDatabase } from "idb";
+import { EditPlaylistEntry } from "../models/edit-playlist-entry";
 
 export const ImagesType = "images";
 export const VideosType = "videos";
+export const MusicType = "music";
 export const UnencryptedVideosType = "unencryptedvideo";
 
 export async function deleteVideoEntry(
@@ -25,7 +28,7 @@ export async function deleteVideoEntry(
             let previewFile: string | null = null;
             for (let i = 0; i < metaData.manifest.length; i++) {
                 let entry = metaData.manifest[i];
-                let fileName = `videos/${metaData.id}/${entry}`;
+                let fileName = `${metaData.type}/${metaData.id}/${entry}`;
                 if (entry.endsWith('_preview.jpg')) {
                     previewFile = fileName;
                     continue;
@@ -52,7 +55,7 @@ export async function deleteVideoEntry(
             }
             if (!metaData.isPublic) {
                 try {
-                    let keyFile = `videos/${metaData.id}/private.key`;
+                    let keyFile = `${metaData.type}/${metaData.id}/private.key`;
                     if (updateProgress) {
                         updateProgress(`Deleting video file: ${keyFile}.`, null);
                     }
@@ -61,7 +64,7 @@ export async function deleteVideoEntry(
                 catch { }
             }
 
-            let indexUrl: string = `videos/${metaData.id}.index`;
+            let indexUrl: string = `${metaData.type}/${metaData.id}.index`;
             if (updateProgress) {
                 updateProgress(`Deleting index file: ${indexUrl}.`, null);
             }
@@ -86,7 +89,7 @@ export async function deleteImageEntry(
     if (metaData?.manifest?.length > 0) {
         for (let i = 0; i < metaData.manifest.length; i++) {
             const entry = metaData.manifest[i];
-            const fileName = `images/${metaData.id}/${entry}`;
+            const fileName = `${metaData.type}/${metaData.id}/${entry}`;
             if (updateProgress) {
                 updateProgress(`Deleting image file: ${fileName}`, null);
             }
@@ -95,7 +98,7 @@ export async function deleteImageEntry(
             });
             if (!metaData.isPublic) {
                 try {
-                    let keyFile = `images/${metaData.id}/private.key`;
+                    let keyFile = `${metaData.type}/${metaData.id}/private.key`;
                     if (updateProgress) {
                         updateProgress(`Deleting private key: ${keyFile}`, null);
                     }
@@ -107,7 +110,7 @@ export async function deleteImageEntry(
             }
         }
 
-        let indexUrl: string = `images/${metaData.id}.index`;
+        let indexUrl: string = `${metaData.type}/${metaData.id}.index`;
         if (updateProgress) {
             updateProgress(`Deleting index file: ${indexUrl}`, null);
         }
@@ -119,28 +122,65 @@ export async function deleteImageEntry(
 
 }
 
+export async function getPlaylistEntries(userSession: UserSession, db: IDBPDatabase<unknown>, playlistId: string, type: string | null) {
+    const arr = new Array<EditPlaylistEntry>();
+    let results = await getCacheEntriesFromGroup(userSession, db, type, null, playlistId, null, null);
+    if (results && results.allEntries && results.allEntries.length > 0) {
+        let ud = userSession.loadUserData();
+        for (let i = 0; i < results.allEntries.length; i++) {
+            const cacheEntry = results.allEntries[i];
+            let decryptedData: string | null = null;
+            try {
+                decryptedData = await userSession.decryptContent(cacheEntry.data) as string;
+            }
+            catch (error) {
+                console.log(error);
+            }
+            if (decryptedData) {
+                let metaData = JSON.parse(decryptedData);
+                let entryType = getTypeFromSection(cacheEntry.section);
+                let username = metaData.userName;
+                let title = metaData.title;
+                if (username && username !== ud.username) {
+                    title = `${title} (${username})`;
+                }
+                const entry: EditPlaylistEntry = {
+                    type: entryType,
+                    groupid: playlistId,
+                    indexFile: `${entryType}/${metaData.id}.index`,
+                    userName: username,
+                    title: title
+                };
+                arr.push(entry);
+            }
+        }
+    }
+    return arr;
+}
+
 export async function loadBrowseEntryFromCache(userSession: UserSession, metaData: MediaMetaData, loadPreviewImage: boolean): Promise<any> {
     let be: BrowseEntry | null = null;
     try {
         if (metaData) {
             let source: string = '';
-            if (metaData.type === VideosType) {
-                source = await userSession?.getFileUrl(`videos/${metaData.id}/master.m3u8`, {
+            if (metaData.type === VideosType || metaData.type === MusicType) {
+                source = await userSession?.getFileUrl(`${metaData.type}/${metaData.id}/master.m3u8`, {
                     username: metaData.userName
                 });
             }
             if (source || metaData.type === ImagesType) {
 
+                let isMusic = metaData.type === MusicType;
                 let content: string | ArrayBuffer | null;
 
-                if (loadPreviewImage) {
+                if (loadPreviewImage && !isMusic) {
                     let previewImageName = metaData.previewImageName;
                     if (!previewImageName) {
                         if (metaData.type === ImagesType) {
-                            previewImageName = `images/${metaData.id}/${metaData.manifest[0]}`;
+                            previewImageName = `${metaData.type}/${metaData.id}/${metaData.manifest[0]}`;
                         }
                         else {
-                            previewImageName = `videos/${metaData.id}/${metaData.id}_preview.jpg`;
+                            previewImageName = `${metaData.type}/${metaData.id}/${metaData.id}_preview.jpg`;
                         }
                     }
                     const isPublic = metaData.isPublic ? true : false;
@@ -152,7 +192,7 @@ export async function loadBrowseEntryFromCache(userSession: UserSession, metaDat
                 let userData = userSession.loadUserData();
 
                 let buffer = content as ArrayBuffer;
-                if (!loadPreviewImage || buffer) {
+                if (isMusic || !loadPreviewImage || buffer) {
                     be = {
                         metaData: metaData,
                         previewImage: '',
@@ -160,9 +200,14 @@ export async function loadBrowseEntryFromCache(userSession: UserSession, metaDat
                         age: computeAge(metaData.lastUpdatedUTC),
                         fromShare: (metaData.userName && metaData.userName !== userData.username) as boolean
                     };
-                    const base64 = base64ArrayBuffer(buffer);
-                    if (be) {
-                        be.previewImage = base64;
+                    if (isMusic) {
+                        be.previewImage = metaData.previewImageName;
+                    }
+                    else {
+                        const base64 = base64ArrayBuffer(buffer);
+                        if (be) {
+                            be.previewImage = base64;
+                        }
                     }
                 }
             }
@@ -238,7 +283,13 @@ export async function loadBatchVideos(userSession: UserSession,
                 let be = await loadBrowseEntryFromCache(userSession, metaData, true) as BrowseEntry;
                 if (be) {
                     let img = new Image();
-                    let src = `data:image/png;base64, ${be.previewImage}`;
+                    let src;
+                    if (be.previewImage !== 'music.png') {
+                        src = `data:image/png;base64, ${be.previewImage}`;
+                    }
+                    else {
+                        src = be.previewImage;
+                    }
                     loadingCount++;
                     img.onload = ev => {
                         const size = getImageSize(img.width, img.height, 400, 200);

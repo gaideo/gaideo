@@ -6,7 +6,7 @@ import { MediaMetaData } from "../models/media-meta-data";
 import { createHashAddress } from "./gaia-utils";
 import { readBinaryFile } from "./file-utils";
 import { getImageSize } from "./image-utils";
-import { VideosType } from "./media-utils";
+import { VideosType, MusicType } from "./media-utils";
 import { sleep } from "./time-utils";
 const { createFFmpeg } = require('@ffmpeg/ffmpeg');
 
@@ -203,7 +203,7 @@ function getArgsFromInput(input: FFMpegInput): string[] {
                     "-c:v", "libx264", "-profile:v", "high10", "-level", "4.2", "-crf", "20",
                     "-g", "48", "-keyint_min", "48",
                     "-vf", `scale=-1:${input.dimensions.height}`, "-start_number", "0",
-                    "-hls_time", "4", "-hls_list_size", "0", "-f", "hls",
+                    "-hls_time", input.isMusic ? "30" : "4", "-hls_list_size", "0", "-f", "hls",
                     /*"-hls_key_info_file", "key.info",*/ `video${input.dimensions.height}-stream.m3u8`,
                 ];
             }
@@ -279,13 +279,25 @@ video${dimensions.height}-stream.m3u8\n`
     return new Uint8Array(enc.encode(mp3uText));
 }
 
-export function computeNameFromImageFile(videoFileName: string) {
-    let index = videoFileName.lastIndexOf(".");
-    let ret = videoFileName;
-    if (index >= 0) {
-        ret = videoFileName.substring(0, index);
+export function isMusicFile(name: string) {
+    if (name.toLowerCase().endsWith('.mp3')) {
+        return true;
     }
-    return ret;
+    return false;
+}
+
+export function computeNameFromImageFile(videoFileName: string) {
+    if (isMusicFile(videoFileName)) {
+        return 'music.png'
+    }
+    else {
+        let index = videoFileName.lastIndexOf(".");
+        let ret = videoFileName;
+        if (index >= 0) {
+            ret = videoFileName.substring(0, index);
+        }
+        return ret;
+    }
 
 }
 const computePreviewFileName = (videoFileName: string) => {
@@ -304,17 +316,24 @@ export async function convertVideoToHls(
     let dimWidth: number = 0;
     let dimHeight: number = 0;
     let isRotated: boolean = false;
-    let duration = '00:00:00.00';
+    let duration = '';
     const dimensionRegex = /Stream.+,\s*([0-9]{3,5}x[0-9]{3,5})/g;
     const rotateRegex = /rotate\s*:\s*([0-9]+)/g;
     const durationRegex = /Duration:\s*([0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{2,})/g
     const timeRegex = /\s+time=([0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{2,})/g
 
+    let isMusic = isMusicFile(file.name);
     let gettingDimensions = false;
     let encoding = false;
     let encodingMessage = `${encrypt ? "Encrypting" : "Transcoding"} video.  This may take a while depending on the size...`;
 
     const handleLogMessage = (e: any) => {
+        if (!duration) {
+            const durationResult = durationRegex.exec(e.message);
+            if (durationResult?.length === 2) {
+                duration = durationResult[1];
+            }
+        }
         if (gettingDimensions) {
             const dimResult = dimensionRegex.exec(e.message);
             if (dimResult?.length === 2) {
@@ -339,15 +358,9 @@ export async function convertVideoToHls(
                         }
                     }
                 }
-                else {
-                    const durationResult = durationRegex.exec(e.message);
-                    if (durationResult?.length === 2) {
-                        duration = durationResult[1];
-                    }
-                }
             }
         }
-        else if (encoding && e.message?.indexOf("frame=") >= 0) {
+        else if (encoding && e.message?.indexOf("time=") >= 0) {
             const timeResult = timeRegex.exec(e.message);
             if (timeResult?.length === 2 && duration) {
                 updateProgress(encodingMessage, `Current time: ${timeResult[1]}, Duration: ${duration}`);
@@ -356,16 +369,14 @@ export async function convertVideoToHls(
     }
 
     let ffmpeg: any;
-    if (!isMobile) {
-        const canRun = await canRunWebAssembly();
-        if (canRun) {
-            ffmpeg = createFFmpeg({
-                corePath: "/scripts/workers/ffmpeg-core.js",
-                log: true,
-                logger: handleLogMessage
-            });
-            await ffmpeg.load();
-        }
+    const canRun = await canRunWebAssembly();
+    if (canRun) {
+        ffmpeg = createFFmpeg({
+            corePath: "/scripts/workers/ffmpeg-core.js",
+            log: true,
+            logger: handleLogMessage
+        });
+        await ffmpeg.load();
     }
 
     if (inputMetaData.previewImageName) {
@@ -377,15 +388,23 @@ export async function convertVideoToHls(
         var enc = new TextEncoder();
         let keyInfoData = new Uint8Array(enc.encode(keyInfo));
         let data = await readBinaryFile(file);
-        gettingDimensions = true;
-        updateProgress(`Getting video dimensions for ${file.name}...`, null);
-        let result = await runFFMeg({
-            file: file,
-            fileData: data,
-            inputType: FFMpegInputType.GetDimensions,
-            ffmpeg: ffmpeg
-        }, handleLogMessage);
-        gettingDimensions = false;
+        let result: any = null;
+        if (isMusic) {
+            dimHeight = 192;
+            dimWidth = 192;
+            result = {};
+        }
+        else {
+            gettingDimensions = true;
+            updateProgress(`Getting video dimensions for ${file.name}...`, null);
+            result = await runFFMeg({
+                file: file,
+                fileData: data,
+                inputType: FFMpegInputType.GetDimensions,
+                ffmpeg: ffmpeg
+            }, handleLogMessage);
+            gettingDimensions = false;
+        }
         if (!result.error) {
             if (dimHeight > 0 && dimWidth > 0) {
                 if (dimHeight > 720 || dimWidth > 1280) {
@@ -414,27 +433,36 @@ export async function convertVideoToHls(
                 }
             }
             let subMessage: string | null = null;
-            if (dimensions) {
-                subMessage = `Video size: ${dimWidth}x${dimHeight}, Image size: ${dimensions?.width}.${dimensions?.height}`
+            if (isMusic) {
+                subMessage = `Music file detected. Skipping preview image generation.`
             }
-            updateProgress(`Generating preview image...`, subMessage);
-            result = await runFFMeg({
-                file: file,
-                fileData: data,
-                inputType: FFMpegInputType.PreviewImage,
-                output: computePreviewFileName(inputMetaData.previewImageName),
-                dimensions: dimensions,
-                ffmpeg: ffmpeg
-            }, handleLogMessage);
+            else if (dimensions) {
+                subMessage = `Video size: ${dimWidth}x${dimHeight}, Image size: ${dimensions?.width}.${dimensions?.height}`
+                updateProgress(`Generating preview image...`, subMessage);
+                result = await runFFMeg({
+                    file: file,
+                    fileData: data,
+                    inputType: FFMpegInputType.PreviewImage,
+                    output: computePreviewFileName(inputMetaData.previewImageName),
+                    dimensions: dimensions,
+                    ffmpeg: ffmpeg
+                }, handleLogMessage);
+            }
             let memfs = result.result?.MEMFS;
-            if (!result.error && memfs?.length > 0 && !result.error) {
-                let previewFile = memfs[0];
-                if (!memfs[0].name.endsWith("_preview.jpg")) {
-                    previewFile = { ...memfs[0], name: `${memfs[0].name}_preview.jpg` }
+            if (isMusic || (!result.error && memfs?.length > 0 && !result.error)) {
+                if (isMusic) {
+                    metaData.id = createHashAddress([metaData.id]);
+                    metaData.previewImageName = `music.png`;
                 }
-                hlsFiles.push(previewFile);
-                metaData.id = createHashAddress([metaData.id, previewFile.name.replace('_preview.jpg', '')]);
-                metaData.previewImageName = `videos/${metaData.id}/${previewFile.name}`;
+                else {
+                    let previewFile = memfs[0];
+                    if (!memfs[0].name.endsWith("_preview.jpg")) {
+                        previewFile = { ...memfs[0], name: `${memfs[0].name}_preview.jpg` }
+                    }
+                    hlsFiles.push(previewFile);
+                    metaData.id = createHashAddress([metaData.id, previewFile.name.replace('_preview.jpg', '')]);
+                    metaData.previewImageName = `videos/${metaData.id}/${previewFile.name}`;
+                }
                 if (!dimensions || !dimensions.height || !dimensions.width) {
                     throw Error("Unable to determine size of the input video.")
                 }
@@ -448,7 +476,8 @@ export async function convertVideoToHls(
                     dimensions: dimensions,
                     keyData: keyData,
                     keyInfoData: keyInfoData,
-                    ffmpeg: ffmpeg
+                    ffmpeg: ffmpeg,
+                    isMusic: isMusic
                 }, handleLogMessage);
                 encoding = false;
                 if (!result.error) {
@@ -486,7 +515,7 @@ export async function convertVideoToHls(
                         }
 
                         metaData.manifest = hlsFiles.map(x => x.name);
-                        metaData.type = VideosType;
+                        metaData.type = isMusic ? MusicType : VideosType;
                         return {
                             metaData: metaData,
                             hlsFiles: hlsFiles

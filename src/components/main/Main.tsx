@@ -7,6 +7,7 @@ import EncryptIcon from '@material-ui/icons/EnhancedEncryptionOutlined';
 import ContactIcon from '@material-ui/icons/ContactMailOutlined';
 import SearchIcon from '@material-ui/icons/Search';
 import CameraEnhanceOutlinedIcon from '@material-ui/icons/CameraEnhanceOutlined';
+import MusicNoteIcon from '@material-ui/icons/MusicNoteOutlined';
 import { useConnect } from '@blockstack/connect';
 import { UserData } from 'blockstack/lib/auth/authApp';
 import AccountCircle from '@material-ui/icons/AccountCircle';
@@ -31,6 +32,7 @@ import ConfirmDialog from '../confirm-dialog/ConfirmDialog';
 import { listFiles, saveSelectedShares, saveSelectedGroup } from '../../utilities/gaia-utils';
 import { Playlists } from '../playlists/Playlists';
 import { Search } from '../search/Search';
+import { MusicType, VideosType } from '../../utilities/media-utils';
 
 const drawerWidth = 240;
 
@@ -51,7 +53,8 @@ interface MainProps {
     setNewVideosCountCallback: SetNewCountCallback;
     newPhotosCount: number;
     setNewPhotosCountCallback: SetNewCountCallback;
-
+    newMusicCount: number;
+    setNewMusicCountCallback: SetNewCountCallback;
 }
 
 export default function Main(props: MainProps) {
@@ -109,16 +112,19 @@ export default function Main(props: MainProps) {
     const { promiseInProgress } = usePromiseTracker();
     const isPublish = window.location.hash.startsWith('#/publish');
     const isVideos = window.location.hash.startsWith('#/videos') || window.location.hash === '';
+    const isMusic = window.location.hash.startsWith('#/music') || window.location.hash === '';
     const isImages = window.location.hash.startsWith('#/images');
     const isEncrypt = window.location.hash.startsWith('#/encrypt');
     const isContactUs = window.location.hash.startsWith('#/contactus');
     const [publishSelected, setPublishSelected] = useState(isPublish);
     const [videosSelected, setVideosSelected] = useState(isVideos);
     const [imagesSelected, setImagesSelected] = useState(isImages);
+    const [songsSelected, setSongsSelected] = useState(isMusic);
     const [encryptSelected, setEncryptSelected] = useState(isEncrypt);
     const [contactUsSelected, setContactUsSelected] = useState(isContactUs);
     const [photos, setPhotos] = useState(new Array<Photo>());
     const [videos, setVideos] = useState(new Array<BrowseEntry>());
+    const [songs, setSongs] = useState(new Array<BrowseEntry>());
     const [showClose, setShowClose] = useState(false);
     const [showFriends, setShowFriends] = useState(false);
     const [showPlaylists, setShowPlaylists] = useState(false);
@@ -141,6 +147,12 @@ export default function Main(props: MainProps) {
     }
     else if (imagesSelected && !isImages) {
         setImagesSelected(false);
+    }
+    if (!songsSelected && isMusic) {
+        setSongsSelected(true)
+    }
+    else if (songsSelected && !isMusic) {
+        setSongsSelected(false);
     }
     if (!encryptSelected && isEncrypt) {
         setEncryptSelected(true);
@@ -238,18 +250,23 @@ export default function Main(props: MainProps) {
         let path: string = '/videos/browse';
         const selVideos = (name === "Videos");
         const selImages = (name === "Photos");
+        const selSongs = (name === "Music");
 
         setPublishSelected(name === "Upload")
         setEncryptSelected(name === "Encrypt Videos");
         setContactUsSelected(name === "Contact Us");
         setVideosSelected(selVideos)
         setImagesSelected(selImages);
+        setSongsSelected(selSongs);
 
         if (name === "Upload") {
             path = '/publish';
         }
         else if (name === "Photos") {
             path = "/images/browse";
+        }
+        else if (name === "Music") {
+            path ="/music/browse";
         }
         else if (name === "Encrypt Videos") {
             path = '/encrypt';
@@ -271,6 +288,10 @@ export default function Main(props: MainProps) {
             props.setNewPhotosCountCallback(0);
             setPhotos(new Array<Photo>());
         }
+        else if (selSongs && props.newMusicCount > 0) {
+            props.setNewMusicCountCallback(0);
+            setSongs(new Array<BrowseEntry>());
+        }
     }
 
     const imagesLoadedCallback = useCallback((newPhotos: Photo[]) => {
@@ -284,6 +305,12 @@ export default function Main(props: MainProps) {
             setVideos(newVideos);
         }
     }, [videos]);
+
+    const songsLoadedCallback = useCallback((newSongs: BrowseEntry[]) => {
+        if (songs.length > 0 || newSongs.length !== 0) {
+            setSongs(newSongs);
+        }
+    }, [songs]);
 
     const toggleCloseCallback = useCallback(() => {
         if (showClose) {
@@ -332,6 +359,7 @@ export default function Main(props: MainProps) {
         }
         setVideos(new Array<BrowseEntry>());
         setPhotos(new Array<Photo>());
+        setSongs(new Array<BrowseEntry>());
     }, [userSession]);
 
     const saveSelectedPlaylistCallback = useCallback(async (selected: string | null) => {
@@ -340,12 +368,14 @@ export default function Main(props: MainProps) {
         }
         setVideos(new Array<BrowseEntry>());
         setPhotos(new Array<Photo>());
+        setSongs(new Array<BrowseEntry>());
     }, [userSession]);
 
     const setSearchTextCallback = useCallback((text: string) => {
         setSearchText(text);
         setVideos(new Array<BrowseEntry>());
         setPhotos(new Array<Photo>());
+        setSongs(new Array<BrowseEntry>());
     }, [])
 
     const resetCachedIndexes = async () => {
@@ -408,6 +438,13 @@ export default function Main(props: MainProps) {
         return false;
     }
 
+    const showNewMusic = () => {
+        if (props.newMusicCount > 0) {
+            return true;
+        }
+        return false;
+    }
+
     const drawer = (
         <div>
             <div>
@@ -423,6 +460,12 @@ export default function Main(props: MainProps) {
                         <CameraEnhanceOutlinedIcon style={{ paddingRight: 5 }} />
                         <ListItemText primary={"Photos"} />
                         <Badge invisible={!showNewImages()} badgeContent={props.newPhotosCount} color="secondary">
+                        </Badge>
+                    </ListItem>
+                    <ListItem button selected={songsSelected} onClick={() => { navigateContent("Music") }}>
+                        <MusicNoteIcon style={{ paddingRight: 5 }} />
+                        <ListItemText primary={"Music"} />
+                        <Badge invisible={!showNewMusic()} badgeContent={props.newMusicCount} color="secondary">
                         </Badge>
                     </ListItem>
                     <ListItem button selected={publishSelected} onClick={() => { navigateContent("Upload") }}>
@@ -542,10 +585,11 @@ export default function Main(props: MainProps) {
                             <Icon>
                                 {isVideos ? <MovieIcon />
                                     : isImages ? <CameraEnhanceOutlinedIcon />
-                                        : isPublish ? <PublishIcon />
-                                            : isEncrypt ? <EncryptIcon />
-                                                : isContactUs ? <ContactIcon />
-                                                    : <div></div>}
+                                        : isMusic ? <MusicNoteIcon />
+                                            : isPublish ? <PublishIcon />
+                                                : isEncrypt ? <EncryptIcon />
+                                                    : isContactUs ? <ContactIcon />
+                                                        : <div></div>}
                             </Icon>
                         </div>
                         <div style={{ marginBottom: 0, marginTop: -2, paddingLeft: 5 }}>
@@ -633,7 +677,7 @@ export default function Main(props: MainProps) {
             <ConfirmDialog open={confirmDeleteAllOpen} item={null} onResult={deleteAllConfirmResult} title="Confirm Delete All" message={`Are you sure you want to delete all of your Gaideo data?`} />
             {videoPlayerRoute ? (
                 <Switch>
-                    <Route path="/videoplayer/:access/:owner/:id">
+                    <Route path="/videoplayer/:access/:type/:owner/:id">
                         <VideoPlayer isMobile={isMobile} />
                     </Route>
                 </Switch>
@@ -650,13 +694,13 @@ export default function Main(props: MainProps) {
 
                             <div style={{ paddingTop: browseImagesRoute && slideShowIndex != null ? 0 : 18, paddingLeft: 0, paddingRight: 0 }}>
                                 <Friends show={showFriends} showCallback={showFriendsCallback} isMobile={isMobile} saveSelectedFriendsCallback={saveSelectedFriendsCallback} />
-                                <Playlists show={showPlaylists} showCallback={showPlaylistsCallback} isMobile={isMobile} saveSelectedPlaylistCallback={saveSelectedPlaylistCallback} />
+                                <Playlists show={showPlaylists} showCallback={showPlaylistsCallback} isMobile={isMobile} saveSelectedPlaylistCallback={saveSelectedPlaylistCallback} db={props.db} />
                                 <Search show={showSearch} showCallback={showSearchCallback} isMobile={isMobile} setSearchTextCallback={setSearchTextCallback} />
 
                                 <Switch>
-                                    <Route path="/videos/show/:access/:id/:owner">
+                                    <Route path="/videos/show/:access/:type/:id/:owner">
                                         {userSession?.isUserSignedIn() ? (
-                                            <VideoPlayer isMobile={isMobile} />
+                                            <VideoPlayer isMobile={isMobile} db={props.db} />
                                         ) : (
                                                 <Welcome />
                                             )
@@ -672,7 +716,8 @@ export default function Main(props: MainProps) {
                                                     worker={props.worker}
                                                     updateProgressCallback={updateProgressCallback}
                                                     isMobile={isMobile}
-                                                    searchText={searchText} />
+                                                    searchText={searchText}
+                                                    mediaType={VideosType} />
                                             </div>
                                         ) : (
                                                 <Welcome />
@@ -699,15 +744,35 @@ export default function Main(props: MainProps) {
                                             )
                                         }
                                     </Route>
+                                    <Route path="/music/browse">
+                                        {userSession?.isUserSignedIn() ? (
+                                            <div style={{ paddingTop: !showFriends && !showPlaylists ? 30 : 10 }}>
+                                                <BrowseVideos
+                                                    videos={songs}
+                                                    videosLoadedCallback={songsLoadedCallback}
+                                                    db={props.db}
+                                                    worker={props.worker}
+                                                    updateProgressCallback={updateProgressCallback}
+                                                    isMobile={isMobile}
+                                                    searchText={searchText}
+                                                    mediaType={MusicType} />
+                                            </div>
+                                        ) : (
+                                                <Welcome />
+                                            )
+                                        }
+                                    </Route>
                                     <Route path="/publish/:type/:id">
                                         {userSession?.isUserSignedIn() ? (
                                             <PublishVideo
                                                 worker={props.worker}
                                                 videos={videos}
                                                 photos={photos}
+                                                songs={songs}
                                                 isMobile={isMobile}
                                                 videosLoadedCallback={videosLoadedCallback}
                                                 imagesLoadedCallback={imagesLoadedCallback}
+                                                songsLoadedCallback={songsLoadedCallback}
                                                 updateProgressCallback={updateProgressCallback}
                                             />
                                         ) : (
@@ -721,9 +786,11 @@ export default function Main(props: MainProps) {
                                                 worker={props.worker}
                                                 videos={videos}
                                                 photos={photos}
+                                                songs={songs}
                                                 isMobile={isMobile}
                                                 videosLoadedCallback={videosLoadedCallback}
                                                 imagesLoadedCallback={imagesLoadedCallback}
+                                                songsLoadedCallback={songsLoadedCallback}
                                                 updateProgressCallback={updateProgressCallback}
                                             />
                                         ) : (

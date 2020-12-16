@@ -15,3 +15,8 @@ export interface CacheResults {
     nextPrimaryKey: IDBValidKey | null;
     allEntries?: CacheEntry[];
 }
+
+export interface SortedCacheEntry {
+    sort: string | undefined;
+    cacheEntry: CacheEntry
+}

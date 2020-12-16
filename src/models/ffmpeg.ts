@@ -25,6 +25,7 @@ export interface FFMpegInput {
     keyData?: ArrayBuffer;
     keyInfoData?: ArrayBuffer;
     ffmpeg?: any;
+    isMusic?: boolean;
 }
 
 export interface FFMpegEncryptResult {
