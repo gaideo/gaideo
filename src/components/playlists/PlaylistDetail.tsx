@@ -6,13 +6,14 @@ import Avatar from '@material-ui/core/Avatar';
 import MusicIcon from '@material-ui/icons/MusicNoteOutlined';
 import MovieIcon from '@material-ui/icons/MovieOutlined';
 import PlayIcon from '@material-ui/icons/PlayCircleOutline';
+import PauseIcon from '@material-ui/icons/PauseOutlined'
 import CameraIcon from '@material-ui/icons/CameraEnhanceOutlined';
 import ArrowUpIcon from '@material-ui/icons/ArrowUpwardOutlined';
 import ArrowDownIcon from '@material-ui/icons/ArrowDownwardOutlined';
 
 import DeleteIcon from '@material-ui/icons/Delete';
 import { EditPlaylistEntry } from '../../models/edit-playlist-entry';
-import { Icon, IconButton, Typography } from '@material-ui/core';
+import { IconButton, Typography } from '@material-ui/core';
 
 const useStyles = makeStyles((theme: Theme) =>
   createStyles({
@@ -36,13 +37,19 @@ interface SetPlayEntryCallback {
   (index: number): void
 }
 
+interface SetPlayingCallback {
+  (flag: boolean): void
+}
+
 interface PlaylistDetailProps {
   playlistId: string | null | undefined;
   playlistEntries: Array<EditPlaylistEntry>;
   setPlaylistEntriesCallback: SetPlaylistEntriesCallback;
   selectedIndex?: number;
-  disableEdit? : boolean;
+  disableEdit?: boolean;
   setPlayEntryCallback?: SetPlayEntryCallback;
+  playingIndex?: number;
+  setPlayingCallback? : SetPlayingCallback
 }
 
 export default function PlaylistDetail(props: PlaylistDetailProps) {
@@ -59,9 +66,20 @@ export default function PlaylistDetail(props: PlaylistDetailProps) {
     return arr; // for testing
   };
 
-  const handleMoveItem = (index: number) => {
+  const handleMoveItemDown = (index: number) => {
+    if (index === (props.playlistEntries.length - 1)) {
+      let newArr = array_move(props.playlistEntries, props.playlistEntries.length - 1, 0).slice();
+      props.setPlaylistEntriesCallback(newArr);
+    }
+    else {
+      let newArr = array_move(props.playlistEntries, index, index + 1).slice();
+      props.setPlaylistEntriesCallback(newArr);
+    }
+  };
+
+  const handleMoveItemUp = (index: number) => {
     if (index === 0) {
-      let newArr = array_move(props.playlistEntries, 0, 1).slice();
+      let newArr = array_move(props.playlistEntries, 0, props.playlistEntries.length - 1).slice();
       props.setPlaylistEntriesCallback(newArr);
     }
     else {
@@ -78,12 +96,22 @@ export default function PlaylistDetail(props: PlaylistDetailProps) {
 
   const handlePlayItem = (index: number) => {
     if (props.setPlayEntryCallback) {
-      props.setPlayEntryCallback(index);
+      if (index === props.selectedIndex && props.setPlayingCallback) {
+        if (props.playingIndex === index) {
+          props.setPlayingCallback(false);          
+        }
+        else {
+          props.setPlayingCallback(true);          
+        }
+      }
+      else {
+        props.setPlayEntryCallback(index);
+      }
     }
   }
-
+  
   return (
-    <div className={classes.root} style={{margin: 0}}>
+    <div className={classes.root} style={{ margin: 0 }}>
       <List dense={true}>
         {props.playlistEntries.map((x, index) => (
           <ListItem disableGutters key={x.indexFile} style={{ minWidth: 285, backgroundColor: props.selectedIndex === index ? 'rgba(0, 0, 0, 0.08)' : 'inherit' }}>
@@ -94,32 +122,43 @@ export default function PlaylistDetail(props: PlaylistDetailProps) {
                     {x.type === 'music' ? (<MusicIcon />) : x.type === 'image' ? (<CameraIcon />) : (<MovieIcon />)}
                   </Avatar>
                 </div>
-                <div style={{paddingLeft: 6, display: 'flex', alignItems: 'center'}}>
+                <div style={{ paddingLeft: 6, display: 'flex', alignItems: 'center' }}>
                   <Typography variant="caption">{x.title}</Typography>
                 </div>
               </div>
               <div>
                 <div style={{ display: 'flex', flexDirection: 'row', wordWrap: "break-word" }}>
                   {props.setPlayEntryCallback &&
-                  <div onClick={() => handlePlayItem(index)} style={{ cursor: 'pointer', paddingTop: 5, paddingLeft: 3, paddingRight: 3 }}>
-                    <IconButton style={{ minWidth: 30, outline: 'none', paddingTop: 0, paddingBottom: 0, paddingLeft: 5, paddingRight: 5 }}>
-                      <PlayIcon />
+                    <div onClick={() => handlePlayItem(index)} style={{ cursor: 'pointer', paddingTop: 3, paddingLeft: 0, paddingRight: 0 }}>
+                      <IconButton style={{ minWidth: 30, outline: 'none', paddingTop: 0, paddingBottom: 0, paddingLeft: 0, paddingRight: 0 }}>
+                        {props.playingIndex === index ? (
+                          <PauseIcon />
+                        ) : (
+                          <PlayIcon />
+                          )}
                       </IconButton>
-                  </div>
+                    </div>
                   }
                   {!props.disableEdit &&
-                  <div onClick={() => handleDeleteItem(index)} style={{ cursor: 'pointer', paddingTop: 5, paddingLeft: 3, paddingRight: 3 }}>
-                    <IconButton style={{ minWidth: 30, outline: 'none', paddingTop: 0, paddingBottom: 0, paddingLeft: 5, paddingRight: 5 }}>
-                      <DeleteIcon />
-                    </IconButton>
-                  </div>
+                    <div onClick={() => handleDeleteItem(index)} style={{ cursor: 'pointer', paddingTop: 3, paddingLeft: 0, paddingRight: 0 }}>
+                      <IconButton style={{ minWidth: 30, outline: 'none', paddingTop: 0, paddingBottom: 0, paddingLeft: 0, paddingRight: 0 }}>
+                        <DeleteIcon />
+                      </IconButton>
+                    </div>
                   }
                   {!props.disableEdit &&
-                  <div onClick={() => handleMoveItem(index)} style={{ cursor: 'pointer', paddingTop: 5, paddingLeft: 3, paddingRight: 3 }}>
-                    <IconButton style={{ minWidth: 30, outline: 'none', paddingTop: 0, paddingBottom: 0, paddingLeft: 5, paddingRight: 5 }}> 
-                      {index === 0 ? (<ArrowDownIcon />) : (<ArrowUpIcon />)} 
-                    </IconButton>
-                  </div>
+                    <div onClick={() => handleMoveItemDown(index)} style={{ cursor: 'pointer', paddingTop: 3, paddingLeft: 0, paddingRight: 0 }}>
+                      <IconButton style={{ minWidth: 30, outline: 'none', paddingTop: 0, paddingBottom: 0, paddingLeft: 0, paddingRight: 0 }}>
+                        <ArrowDownIcon />
+                      </IconButton>
+                    </div>
+                  }
+                  {!props.disableEdit &&
+                    <div onClick={() => handleMoveItemUp(index)} style={{ cursor: 'pointer', paddingTop: 3, paddingLeft: 0, paddingRight: 0 }}>
+                      <IconButton style={{ minWidth: 30, outline: 'none', paddingTop: 0, paddingBottom: 0, paddingLeft: 0, paddingRight: 0 }}>
+                        <ArrowUpIcon />
+                      </IconButton>
+                    </div>
                   }
                 </div>
               </div>

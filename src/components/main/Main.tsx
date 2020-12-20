@@ -678,7 +678,7 @@ export default function Main(props: MainProps) {
             {videoPlayerRoute ? (
                 <Switch>
                     <Route path="/videoplayer/:access/:type/:owner/:id">
-                        <VideoPlayer isMobile={isMobile} />
+                        <VideoPlayer isMobile={isMobile} db={props.db} />
                     </Route>
                 </Switch>
             )

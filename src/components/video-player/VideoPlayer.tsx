@@ -39,11 +39,13 @@ export function VideoPlayer(props: VideoPlayerProps) {
   const [playlistId, setPlaylistId] = useState('');
   const [playlistEntries, setPlaylistEntries] = useState<Array<EditPlaylistEntry>>([]);
   const [playlistIndex, setPlaylistIndex] = useState(-1);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [autoPlay, setAutoPlay] = useState(true);
 
   const history = useHistory();
 
   useEffect(() => {
+    console.log('hello');
 
     const getPath = () => {
       let ret: string | null = null;
@@ -308,6 +310,14 @@ export function VideoPlayer(props: VideoPlayerProps) {
     }
   }
 
+  const setPlaying = () => {
+    setIsPlaying(true);
+  }
+
+  const setPaused = () => {
+    setIsPlaying(false);
+  }
+
   const setPlaylistEntriesCallback = useCallback((newPlaylistEntries: EditPlaylistEntry[]) => {
     setPlaylistEntries(newPlaylistEntries);
   }, []);
@@ -341,6 +351,17 @@ export function VideoPlayer(props: VideoPlayerProps) {
     setAutoPlay(value);
   }, []);
 
+  const setPlayingCallback = useCallback((value: boolean) => {
+    if (videoRef && videoRef.current) {
+      if (value) {
+        videoRef.current.play();
+      }
+      else {
+        videoRef.current.pause();
+      }
+    }
+  }, []);
+
   return (
     <div style={{ display: 'flex', flexDirection: props.isMobile ? 'column' : 'row' }}>
       {Hls.isSupported() &&
@@ -351,7 +372,9 @@ export function VideoPlayer(props: VideoPlayerProps) {
             width="100%"
             style={{ border: 'none', maxWidth: width, maxHeight: height }}
             controls
-            onEnded={() => playNext()}></video>
+            onEnded={() => playNext()}
+            onPlay={() => setPlaying()}
+            onPause={() => setPaused()}></video>
           {showDescription &&
             <div style={{ maxWidth: width, maxHeight: height }}>
               <VideoDescription
@@ -384,10 +407,12 @@ export function VideoPlayer(props: VideoPlayerProps) {
           <div style={{ height: '100%', marginTop: props.isMobile ? 0 : 10, marginLeft: 10, paddingLeft: 10, paddingRight: 10, marginRight: 10, maxWidth: 350, borderStyle: 'solid', borderWidth: 1, borderColor: 'darkgrey' }}>
             <PlaylistDetail
               selectedIndex={playlistIndex}
+              playingIndex={isPlaying ? playlistIndex : undefined}
               playlistId={playlistId}
               playlistEntries={playlistEntries}
               setPlaylistEntriesCallback={setPlaylistEntriesCallback}
               setPlayEntryCallback={setPlayEntryCallback}
+              setPlayingCallback={setPlayingCallback}
               disableEdit={true}
             ></PlaylistDetail>
           </div>
