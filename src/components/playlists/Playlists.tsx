@@ -6,7 +6,7 @@ import CloseIcon from '@material-ui/icons/Close';
 import AsyncSelect from 'react-select/async';
 import makeAnimated from 'react-select/animated';
 import { IconButton } from '@material-ui/core';
-import { getGroup, getGroups, getSelectedGroup, saveGroupIndex, updateGroup, defaultMaxSort, getShares, shareGroupIndex, getSharedGroups } from '../../utilities/gaia-utils';
+import { getGroup, getGroups, getSelectedGroup, saveGroupIndex, updateGroup, defaultMaxSort, getShares, shareGroupIndex, getSharedGroups, isFileShared, createHashAddress, SharedGroupType, unshareGroupIndex } from '../../utilities/gaia-utils';
 import { useConnect } from '@blockstack/connect';
 import { trackPromise } from 'react-promise-tracker';
 import ConfirmDialog from '../confirm-dialog/ConfirmDialog';
@@ -52,6 +52,7 @@ export function Playlists(props: PlaylistsProps) {
     const [shareUserOpen, setShareUserOpen] = React.useState(false);
     const [shareUsers, setShareUsers] = React.useState<Array<string>>([]);
     const [open, setOpen] = React.useState(false);
+    const [unshare, setUnshare] = React.useState(false);
 
     useEffect(() => {
         const refresh = async () => {
@@ -232,17 +233,25 @@ export function Playlists(props: PlaylistsProps) {
         }
     }
 
-    const handleShare = async () => {
+    const handleShare = async (isUnshare: boolean) => {
         if (userSession?.isUserSignedIn() && selectedPlaylist) {
             let friends = await getShares(userSession);
             if (friends) {
                 const users: string[] = []
                 for (let key in friends) {
                     let canAdd = true;
+                    if (isUnshare) {
+                        let id = createHashAddress([selectedPlaylist.value])
+                        const isShared = await isFileShared(userSession, key, id, SharedGroupType);
+                        if (!isShared) {
+                            canAdd = false;
+                        }
+                    }
                     if (canAdd) {
                         users.push(key);
                     }
                 }
+                setUnshare(isUnshare)
                 setShareUsers(users);
                 setShareUserOpen(true);
             }
@@ -251,8 +260,13 @@ export function Playlists(props: PlaylistsProps) {
 
     const shareUserResult = (item: MediaMetaData | null, unshare: boolean, result: ShareUserEntry[] | undefined) => {
         setShareUserOpen(false);
-        if (userSession && result && result.length > 0 && selectedPlaylist && !unshare) {
-            trackPromise(shareGroupIndex(userSession, selectedPlaylist.value, result, props.worker));
+        if (userSession && result && result.length > 0 && selectedPlaylist) {
+            if (unshare) {
+                trackPromise(unshareGroupIndex(userSession, selectedPlaylist.value, result, props.worker));
+            }
+            else {
+                trackPromise(shareGroupIndex(userSession, selectedPlaylist.value, result, props.worker));
+            }
         }
     }
 
@@ -275,9 +289,10 @@ export function Playlists(props: PlaylistsProps) {
             handleEditPlaylistOpen();
         }
         else if (action.name === 'Share') {
-            handleShare();
+            handleShare(false);
         }
         else if (action.name === 'Unshare') {
+            handleShare(true);
         }
         else if (action.name === 'Delete') {
             handleDeletePlaylist();
@@ -303,7 +318,7 @@ export function Playlists(props: PlaylistsProps) {
                 <Fragment>
                     <ConfirmDialog open={confirmDeletePlaylistOpen} item={selectedPlaylist} onResult={deleteConfirmResult} title="Confirm Delete" message={`Are you sure you want to delete the selected playlist?`} />
                     <AddPlaylistDialog open={openAdd} id={editID} setAddPlaylistDialogOpenCallback={setAddPlaylistDialogOpenCallback} db={props.db} />
-                    <ShareUserDialog open={shareUserOpen} metaData={null} initialUsers={shareUsers} unshare={false} shareUsersResult={shareUserResult} />
+                    <ShareUserDialog open={shareUserOpen} metaData={null} initialUsers={shareUsers} unshare={unshare} shareUsersResult={shareUserResult} />
                     <div style={{ display: 'flex', flexDirection: 'row' }}>
                         <div style={{ flex: '1 1 auto' }}>
                             <AsyncSelect
@@ -317,12 +332,12 @@ export function Playlists(props: PlaylistsProps) {
                                 components={animatedComponents}
                                 onChange={(newValue, actionMeta) => { handleChanged(newValue) }} />
                         </div>
-                        <div style={{width: 40}}>
+                        <div style={{ width: 40 }}>
                         </div>
                         <div style={{ position: 'relative' }}>
                             <SpeedDial
                                 ariaLabel="SpeedDial example"
-                                style={{left:-43, position: 'absolute'}}
+                                style={{ left: -43, position: 'absolute' }}
                                 icon={<MoreVertIcon />}
                                 onClose={handleClose}
                                 onOpen={handleOpen}

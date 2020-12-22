@@ -1015,16 +1015,20 @@ export async function unshareGroupIndex(userSession: UserSession, groupid: strin
                     let manifestEntry = JSON.parse(json);
                     if (manifestEntry.userName === ud.username) {
                         const currentType = getTypeFromIndexFileName(manifestEntry.indexFile);
-                        const currentid = getIDFromIndexFileName(manifestEntry.indexFile);
-                        for (let j = 0; j < shareUsers.length; j++) {
-                            const isShared = await isFileShared(userSession, shareUsers[j].userName, currentid, currentType);
-                            if (isShared) {
-                                let fileEntry: FileEntry = {
-                                    id: currentid,
-                                    type: currentType
-                                };
-                                await updateMasterIndex(userSession, null, FileOperation.Unshare, [fileEntry], shareUsers[j].userName);
+                        const currentid = getFileIDFromIndexFileName(manifestEntry.indexFile);
+                        if (currentid) {
+                            for (let j = 0; j < shareUsers.length; j++) {
+                                if (shareUsers[j].share) {
+                                    const isShared = await isFileShared(userSession, shareUsers[j].userName, currentid, currentType);
+                                    if (isShared) {
+                                        let fileEntry: FileEntry = {
+                                            id: currentid,
+                                            type: currentType
+                                        };
+                                        await updateMasterIndex(userSession, null, FileOperation.Unshare, [fileEntry], shareUsers[j].userName);
 
+                                    }
+                                }
                             }
                         }
                     }
