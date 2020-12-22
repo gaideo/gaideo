@@ -9,5 +9,5 @@ export interface BrowseEntry {
     previewImageHeight?: number;
     previewImageWidth?: number;
     actualHeight?: number;
-    actualWidth?: number
+    actualWidth?: number;
 }

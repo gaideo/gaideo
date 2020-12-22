@@ -47,9 +47,10 @@ export default function AddPlaylistDialog(props: AddPlaylistDialogProps) {
                     if (group) {
                         setPlaylistID(group.id);
                         setPlaylistName(group.name);
-                        const arr = await getPlaylistEntries(userSession, props.db, group.id, null);
-                        if (arr.length > 0) {
-                            setPlaylistEntries(arr);
+                        const results = await getPlaylistEntries(userSession, props.db, group.id, null);
+                        let entries = results.entries as EditPlaylistEntry[];
+                        if (entries.length > 0) {
+                            setPlaylistEntries(entries);
                         }
                     }
                 }

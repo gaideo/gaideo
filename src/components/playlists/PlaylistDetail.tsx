@@ -130,7 +130,7 @@ export default function PlaylistDetail(props: PlaylistDetailProps) {
                 <div style={{ display: 'flex', flexDirection: 'row', wordWrap: "break-word" }}>
                   {props.setPlayEntryCallback &&
                     <div onClick={() => handlePlayItem(index)} style={{ cursor: 'pointer', paddingTop: 3, paddingLeft: 0, paddingRight: 0 }}>
-                      <IconButton style={{ minWidth: 30, outline: 'none', paddingTop: 0, paddingBottom: 0, paddingLeft: 0, paddingRight: 0 }}>
+                      <IconButton style={{ minWidth: 30, outline: 'none', padding: 0 }}>
                         {props.playingIndex === index ? (
                           <PauseIcon />
                         ) : (
@@ -141,21 +141,21 @@ export default function PlaylistDetail(props: PlaylistDetailProps) {
                   }
                   {!props.disableEdit &&
                     <div onClick={() => handleDeleteItem(index)} style={{ cursor: 'pointer', paddingTop: 3, paddingLeft: 0, paddingRight: 0 }}>
-                      <IconButton style={{ minWidth: 30, outline: 'none', paddingTop: 0, paddingBottom: 0, paddingLeft: 0, paddingRight: 0 }}>
+                      <IconButton style={{ minWidth: 30, outline: 'none', padding: 0 }}>
                         <DeleteIcon />
                       </IconButton>
                     </div>
                   }
                   {!props.disableEdit &&
                     <div onClick={() => handleMoveItemDown(index)} style={{ cursor: 'pointer', paddingTop: 3, paddingLeft: 0, paddingRight: 0 }}>
-                      <IconButton style={{ minWidth: 30, outline: 'none', paddingTop: 0, paddingBottom: 0, paddingLeft: 0, paddingRight: 0 }}>
+                      <IconButton style={{ minWidth: 30, outline: 'none', padding: 0 }}>
                         <ArrowDownIcon />
                       </IconButton>
                     </div>
                   }
                   {!props.disableEdit &&
                     <div onClick={() => handleMoveItemUp(index)} style={{ cursor: 'pointer', paddingTop: 3, paddingLeft: 0, paddingRight: 0 }}>
-                      <IconButton style={{ minWidth: 30, outline: 'none', paddingTop: 0, paddingBottom: 0, paddingLeft: 0, paddingRight: 0 }}>
+                      <IconButton style={{ minWidth: 30, outline: 'none', padding: 0 }}>
                         <ArrowUpIcon />
                       </IconButton>
                     </div>

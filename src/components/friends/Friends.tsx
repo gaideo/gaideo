@@ -4,12 +4,14 @@ import DeleteIcon from '@material-ui/icons/Delete';
 import CloseIcon from '@material-ui/icons/Close';
 import AsyncSelect from 'react-select/async';
 import makeAnimated from 'react-select/animated';
-import { Icon } from '@material-ui/core';
+import { IconButton } from '@material-ui/core';
 import AddFriendDialog from './AddFriendDialog';
 import { getShares, getSelectedShares, updateShares } from '../../utilities/gaia-utils';
 import { useConnect } from '@blockstack/connect';
 import { trackPromise } from 'react-promise-tracker';
 import ConfirmDialog from '../confirm-dialog/ConfirmDialog';
+import { SpeedDial, SpeedDialAction } from '@material-ui/lab';
+import MoreVertIcon from '@material-ui/icons/MoreVert';
 
 
 interface ShowCallback {
@@ -36,6 +38,7 @@ export function Friends(props: FriendsProps) {
     const [confirmDeleteFriendOpen, setConfirmDeleteFriendOpen] = React.useState(false);
     const [friendList, setFriendList] = useState('');
     const [selectedFriends, setSelectedFriends] = useState<Array<any> | undefined | null>([]);
+    const [open, setOpen] = React.useState(false);
 
     useEffect(() => {
         const refresh = async () => {
@@ -147,6 +150,36 @@ export function Friends(props: FriendsProps) {
         }
     }
 
+    const handleClose = () => {
+        setOpen(false);
+    };
+
+    const handleOpen = (event: any) => {
+        if (event.type !== "focus") {
+            setOpen(true);
+        }
+    };
+
+    const handleAction = (action: any) => {
+        handleClose();
+        if (action.name === 'Add') {
+            handleAddFriendOpen();
+        }
+        else if (action.name === 'Delete') {
+            handleDeleteFriend();
+        }
+    }
+
+    const getActions = () => {
+        const actions = [
+            { icon: <AddIcon />, name: 'Add' }
+        ];
+        if (selectedFriends && selectedFriends.length > 0) {
+            actions.push({ icon: <DeleteIcon />, name: 'Delete' });
+        }
+        return actions;
+    }
+
     return (
         <div style={{ paddingTop: props.show ? 30 : 0, paddingLeft: !props.isMobile ? 22 : 0 }}>
             {props.show &&
@@ -167,9 +200,34 @@ export function Friends(props: FriendsProps) {
                                 isMulti
                                 onChange={(newValue, actionMeta) => { setSelectedFriends(newValue); props.saveSelectedFriendsCallback(newValue); }} />
                         </div>
-                        <div onClick={handleAddFriendOpen} style={{ cursor: 'pointer', paddingTop: 5, paddingLeft: 3, paddingRight: 3 }}><Icon><AddIcon /></Icon></div>
-                        <div onClick={handleDeleteFriend} style={{ cursor: 'pointer', paddingTop: 5, paddingLeft: 3, paddingRight: 3 }}><Icon><DeleteIcon /></Icon></div>
-                        <div onClick={handleFriendsHide} style={{ cursor: 'pointer', paddingTop: 5, paddingLeft: 3, paddingRight: 3 }}><Icon><CloseIcon /></Icon></div>
+                        <div style={{width: 40}}>
+
+                        </div>
+                        <div style={{ position: 'relative' }}>
+                            <SpeedDial
+                                style={{left:-43, position: 'absolute'}}
+                                ariaLabel="Friend Action Menu"
+                                icon={<MoreVertIcon />}
+                                onClose={handleClose}
+                                onOpen={handleOpen}
+                                open={open}
+                                direction={"down"}>
+                                {getActions().map((action) => (
+                                    <SpeedDialAction
+                                        key={action.name}
+                                        icon={action.icon}
+                                        tooltipTitle={action.name}
+                                        onClick={() => handleAction(action)}
+                                    />
+                                ))}
+                            </SpeedDial>
+                        </div>
+                        <div onClick={handleFriendsHide} style={{ cursor: 'pointer', padding: 0 }}>
+                            <IconButton style={{ minWidth: 30, outline: 'none', padding: 0 }}>
+                                <CloseIcon />
+                            </IconButton>
+                        </div>
+
                     </div>
                 </Fragment>
             }

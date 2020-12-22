@@ -10,6 +10,7 @@ import { IDBPDatabase } from 'idb';
 import { getPlaylistEntries, loadBrowseEntry } from '../../utilities/media-utils';
 import { EditPlaylistEntry } from '../../models/edit-playlist-entry';
 import PlaylistDetail from '../playlists/PlaylistDetail';
+import { FormControlLabel, Typography, Switch } from '@material-ui/core';
 
 interface VideoPlayerContext {
   current: any;
@@ -25,6 +26,9 @@ interface ParamTypes {
 interface VideoPlayerProps {
   isMobile: boolean,
   db?: IDBPDatabase<unknown> | null | undefined;
+  showSearch: boolean;
+  showFriends: boolean;
+  showPlaylists: boolean;
 }
 
 export function VideoPlayer(props: VideoPlayerProps) {
@@ -37,16 +41,15 @@ export function VideoPlayer(props: VideoPlayerProps) {
   const [height, setHeight] = useState<number | undefined>();
   const [showDescription, setShowDescription] = useState(false);
   const [playlistId, setPlaylistId] = useState('');
+  const [playlistTitle, setPlaylistTitle] = useState('');
   const [playlistEntries, setPlaylistEntries] = useState<Array<EditPlaylistEntry>>([]);
   const [playlistIndex, setPlaylistIndex] = useState(-1);
   const [isPlaying, setIsPlaying] = useState(false);
   const [autoPlay, setAutoPlay] = useState(true);
-
+  const [shuffle, setShuffle] = useState(false);
   const history = useHistory();
 
   useEffect(() => {
-    console.log('hello');
-
     const getPath = () => {
       let ret: string | null = null;
       const pathRegex = /\?path=([0-9a-zA-Z./]+)/g;
@@ -199,18 +202,23 @@ export function VideoPlayer(props: VideoPlayerProps) {
 
         if (videoRef?.current) {
           const playlistRegex = /playlist=([a-zA-Z0-9]{8}-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{12})/g
-          const playlistResult = playlistRegex.exec(location.search);
+          const playlistRegex2 = /playlist=([a-zA-Z0-9]{34}\|^['"<>&?()]+)/g
+          let playlistResult = playlistRegex.exec(location.search);
+          if (playlistResult?.length !== 2) {
+            playlistResult = playlistRegex2.exec(location.search);
+          }
           if (playlistResult?.length === 2) {
             setPlaylistId(playlistResult[1]);
             if (props.db) {
               let indexFile = `${type}/${id}.index`;
-              const entries = await getPlaylistEntries(userSession, props.db, playlistResult[1], type);
-              for (let i = 0; i < entries.length; i++) {
-                if (entries[i].indexFile === indexFile) {
+              const results = await getPlaylistEntries(userSession, props.db, playlistResult[1], type);
+              setPlaylistTitle(results.title ?? '');
+              for (let i = 0; i < results.entries.length; i++) {
+                if (results.entries[i].indexFile === indexFile) {
                   setPlaylistIndex(i);
                 }
               }
-              setPlaylistEntries(entries);
+              setPlaylistEntries(results.entries);
             }
           }
           let source: string | null = null;
@@ -299,14 +307,27 @@ export function VideoPlayer(props: VideoPlayerProps) {
 
   const playNext = async () => {
     if (autoPlay && playlistId && userSession?.isUserSignedIn()) {
-      let index = 0;
-      if (playlistIndex >= 0) {
-        index = playlistIndex + 1;
+      let index;
+      if (shuffle && playlistEntries.length > 1) {
+        index = Math.floor((Math.random() * playlistEntries.length));
       }
-      if (index >= playlistEntries.length) {
+      else {
         index = 0;
+        if (playlistIndex >= 0) {
+          index = playlistIndex + 1;
+        }
+        if (index >= playlistEntries.length) {
+          index = 0;
+        }
       }
-      setPlayEntryCallback(index);
+      if (index === playlistIndex) {
+        if (videoRef && videoRef.current) {
+          videoRef.current.play();
+        }
+      }
+      else {
+        setPlayEntryCallback(index);
+      }
     }
   }
 
@@ -347,10 +368,6 @@ export function VideoPlayer(props: VideoPlayerProps) {
     }
   }, [userSession, history, id, playlistEntries, playlistId, type]);
 
-  const setAutoPlayCallback = useCallback((value: boolean) => {
-    setAutoPlay(value);
-  }, []);
-
   const setPlayingCallback = useCallback((value: boolean) => {
     if (videoRef && videoRef.current) {
       if (value) {
@@ -362,10 +379,14 @@ export function VideoPlayer(props: VideoPlayerProps) {
     }
   }, []);
 
+  const isShowingPicker = () => {
+    return props.showFriends || props.showPlaylists || props.showSearch;
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: props.isMobile ? 'column' : 'row' }}>
       {Hls.isSupported() &&
-        <div style={{ flex: '1 1 auto', paddingTop: !Hls.isSupported() ? 22 : 0, paddingLeft: props.isMobile ? 0 : 22 }}>
+        <div style={{ flex: '1 1 auto', paddingTop: !isShowingPicker() ? 24 : 0, paddingLeft: props.isMobile ? 0 : 22 }}>
           <video
             ref={videoRef}
             id="video"
@@ -379,15 +400,13 @@ export function VideoPlayer(props: VideoPlayerProps) {
             <div style={{ maxWidth: width, maxHeight: height }}>
               <VideoDescription
                 playlistId={playlistId}
-                autoPlay={autoPlay}
-                setAutoPlayCallback={setAutoPlayCallback}
               />
             </div>
           }
         </div>
       }
       {!Hls.isSupported() &&
-        <div style={{ paddingTop: 22, paddingLeft: props.isMobile ? 0 : 22 }}>
+        <div style={{ paddingTop: !isShowingPicker() ? 24 : 0, paddingLeft: props.isMobile ? 0 : 22 }}>
           <video
             playsInline
             muted
@@ -398,13 +417,46 @@ export function VideoPlayer(props: VideoPlayerProps) {
             onEnded={() => playNext()}></video>
           {showDescription &&
             <div style={{ maxWidth: width, maxHeight: height }}>
-              <VideoDescription playlistId={playlistId} autoPlay={autoPlay} setAutoPlayCallback={setAutoPlayCallback} />
+              <VideoDescription playlistId={playlistId}/>
             </div>
           }
         </div>}
       {playlistId &&
-        <div style={{ paddingTop: props.isMobile ? 0 : 22 }}>
-          <div style={{ height: '100%', marginTop: props.isMobile ? 0 : 10, marginLeft: 10, paddingLeft: 10, paddingRight: 10, marginRight: 10, maxWidth: 350, borderStyle: 'solid', borderWidth: 1, borderColor: 'darkgrey' }}>
+        <div style={{ paddingTop: props.isMobile || isShowingPicker() ? 0 : 22 }}>
+          <div style={{ height: '100%', marginTop: props.isMobile ? 0 : 0, marginLeft: 10, paddingLeft: 10, paddingRight: 10, marginRight: 10, maxWidth: 350 }}>
+            <div style={{paddingTop: 5}}>
+              <Typography variant="body1">{playlistTitle}</Typography>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <div style={{ whiteSpace: 'nowrap' }}>
+                <FormControlLabel style={{ marginRight: 0 }}
+                  control={
+                    <Switch
+                      checked={autoPlay}
+                      onChange={() => setAutoPlay(!autoPlay)}
+                      name="checkedB"
+                      color="primary"
+                    />
+                  }
+                  label="Auto Play"
+                />
+              </div>
+              <div style={{ whiteSpace: 'nowrap' }}>
+                <FormControlLabel style={{ marginRight: 0 }}
+                  control={
+                    <Switch
+                      checked={shuffle}
+                      onChange={() => setShuffle(!shuffle)}
+                      name="checkedB"
+                      color="primary"
+                    />
+                  }
+                  label="Shuffle"
+                />
+              </div>
+            </div>
+
+
             <PlaylistDetail
               selectedIndex={playlistIndex}
               playingIndex={isPlaying ? playlistIndex : undefined}

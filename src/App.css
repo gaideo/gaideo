@@ -53,3 +53,9 @@
     transform: rotate(360deg);
   }
 }
+
+.MuiSpeedDial-directionDown .MuiSpeedDial-actions {
+  margin-top: -23px !important;
+  padding-top: 23px !important;
+  flex-direction: column;
+}

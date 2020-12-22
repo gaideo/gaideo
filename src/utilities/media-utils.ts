@@ -3,7 +3,7 @@ import { BrowseEntry } from "../models/browse-entry";
 import { ImagesLoadedCallback, UpdateProgressCallback, VideosLoadedCallback } from "../models/callbacks";
 import { FileOperation } from "../models/file-operation";
 import { MediaMetaData } from "../models/media-meta-data";
-import { updateMasterIndex, getShareRootInfo, getEncryptedFile, getPrivateKey, getFileIDFromIndexFileName, getTypeFromIndexFileName, getCacheEntriesFromGroup, getTypeFromSection } from "./gaia-utils";
+import { updateMasterIndex,  getEncryptedFile, getCacheEntriesFromGroup, getTypeFromSection, loadMetaData } from "./gaia-utils";
 import { base64ArrayBuffer } from "./encoding-utils";
 import { computeAge, sleep } from "./time-utils";
 import { CacheEntry } from "../models/cache-entry";
@@ -71,7 +71,12 @@ export async function deleteVideoEntry(
             await userSession?.deleteFile(indexUrl, {
                 wasSigned: false
             });
-            await updateMasterIndex(userSession, gaiaWorker, FileOperation.Delete, [{ indexFile: indexUrl, metaData: metaData }], undefined);
+            await updateMasterIndex(userSession, gaiaWorker, FileOperation.Delete, [{ 
+                id: metaData.id,
+                type: metaData.type,
+                isPublic: metaData.isPublic,
+                lastUpdatedUTC: metaData.lastUpdatedUTC 
+            }], undefined);
         }
         catch (ex) {
             console.log(`Unable to delete video: ${metaData.id}`)
@@ -117,14 +122,20 @@ export async function deleteImageEntry(
         await userSession?.deleteFile(indexUrl, {
             wasSigned: false
         });
-        await updateMasterIndex(userSession, gaiaWorker, FileOperation.Delete, [{ indexFile: indexUrl, metaData: metaData }], undefined);
+        await updateMasterIndex(userSession, gaiaWorker, FileOperation.Delete, [{ 
+            id: metaData.id,
+            type: metaData.type,
+            isPublic: metaData.isPublic,
+            lastUpdatedUTC: metaData.lastUpdatedUTC
+        }], undefined);
     }
 
 }
 
 export async function getPlaylistEntries(userSession: UserSession, db: IDBPDatabase<unknown>, playlistId: string, type: string | null) {
-    const arr = new Array<EditPlaylistEntry>();
+    const arr: EditPlaylistEntry[] = [];
     let results = await getCacheEntriesFromGroup(userSession, db, type, null, playlistId, null, null);
+    let title: string | undefined = results.groupName;
     if (results && results.allEntries && results.allEntries.length > 0) {
         let ud = userSession.loadUserData();
         for (let i = 0; i < results.allEntries.length; i++) {
@@ -155,7 +166,10 @@ export async function getPlaylistEntries(userSession: UserSession, db: IDBPDatab
             }
         }
     }
-    return arr;
+    return {
+        entries: arr,
+        title: title
+    };
 }
 
 export async function loadBrowseEntryFromCache(userSession: UserSession, metaData: MediaMetaData, loadPreviewImage: boolean): Promise<any> {
@@ -225,36 +239,9 @@ export async function loadBrowseEntry(
     loadPreviewImage: boolean,
     userName?: string): Promise<any> {
     let be: BrowseEntry | null = null;
-    try {
-        let mediaID = getFileIDFromIndexFileName(indexFile);
-        let mediaType = getTypeFromIndexFileName(indexFile);
-        if (mediaID) {
-            let userData = userSession.loadUserData();
-            let mediaRootInfo = await getShareRootInfo(userData, true, userName);
-            let content = await userSession?.getFile(indexFile, {
-                decrypt: false,
-                username: userName
-            }) as string;
-            let metaData = JSON.parse(content);
-            if (metaData.iv) {
-                let privateKey = await getPrivateKey(mediaRootInfo.root, userSession, mediaID, mediaType, userName);
-                if (privateKey) {
-                    content = await userSession.decryptContent(content, {
-                        privateKey: privateKey
-                    }) as string;
-                    metaData = JSON.parse(content);
-                }
-                else {
-                    metaData = null;
-                }
-            }
-            if (metaData) {
-                be = await loadBrowseEntryFromCache(userSession, metaData, loadPreviewImage);
-            }
-        }
-    }
-    catch (error) {
-        console.log(error);
+    let metaData = await loadMetaData(userSession, indexFile, userName);
+    if (metaData) {
+        be = await loadBrowseEntryFromCache(userSession, metaData, loadPreviewImage);
     }
     return be;
 }

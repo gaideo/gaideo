@@ -5,8 +5,8 @@ import DeleteIcon from '@material-ui/icons/Delete';
 import CloseIcon from '@material-ui/icons/Close';
 import AsyncSelect from 'react-select/async';
 import makeAnimated from 'react-select/animated';
-import { Icon } from '@material-ui/core';
-import { getGroup, getGroups, getSelectedGroup, saveGroupIndex, updateGroup, defaultMaxSort } from '../../utilities/gaia-utils';
+import { IconButton } from '@material-ui/core';
+import { getGroup, getGroups, getSelectedGroup, saveGroupIndex, updateGroup, defaultMaxSort, getShares, shareGroupIndex, getSharedGroups } from '../../utilities/gaia-utils';
 import { useConnect } from '@blockstack/connect';
 import { trackPromise } from 'react-promise-tracker';
 import ConfirmDialog from '../confirm-dialog/ConfirmDialog';
@@ -14,14 +14,21 @@ import { Group } from '../../models/group';
 import AddPlaylistDialog from './AddPlaylistDialog';
 import { IDBPDatabase } from 'idb';
 import { EditPlaylistEntry } from '../../models/edit-playlist-entry';
-
+import ShareUserDialog from '../share-user-dialog/ShareUserDialog';
+import { MediaMetaData } from '../../models/media-meta-data';
+import { ShareUserEntry } from '../../models/share-user-entry';
+import { SpeedDial, SpeedDialAction } from '@material-ui/lab';
+import MoreVertIcon from '@material-ui/icons/MoreVert';
+import ScreenShareIcon from '@material-ui/icons/ScreenShare';
+import StopScreenShareIcon from '@material-ui/icons/StopScreenShare';
+import "./Playlist.css";
 
 interface ShowCallback {
     (show: boolean): void
 }
 
 interface SaveSelectedPlaylistCallback {
-    (selected: string | null): void
+    (selected: string | null, userName?: string): void
 }
 
 interface PlaylistsProps {
@@ -29,11 +36,11 @@ interface PlaylistsProps {
     showCallback: ShowCallback;
     isMobile: boolean;
     saveSelectedPlaylistCallback: SaveSelectedPlaylistCallback;
+    worker: Worker | null;
     db?: IDBPDatabase<unknown> | null | undefined;
 }
 
 export function Playlists(props: PlaylistsProps) {
-
     const { authOptions } = useConnect();
     const { userSession } = authOptions;
 
@@ -42,6 +49,9 @@ export function Playlists(props: PlaylistsProps) {
     const [confirmDeletePlaylistOpen, setConfirmDeletePlaylistOpen] = React.useState(false);
     const [playlists, setPlaylists] = useState(new Array<Group>());
     const [selectedPlaylist, setSelectedPlaylist] = useState<any>(null);
+    const [shareUserOpen, setShareUserOpen] = React.useState(false);
+    const [shareUsers, setShareUsers] = React.useState<Array<string>>([]);
+    const [open, setOpen] = React.useState(false);
 
     useEffect(() => {
         const refresh = async () => {
@@ -89,7 +99,7 @@ export function Playlists(props: PlaylistsProps) {
     const handleChanged = (newValue: any) => {
         setSelectedPlaylist(newValue);
         if (newValue && newValue.value) {
-            props.saveSelectedPlaylistCallback(newValue.value);
+            props.saveSelectedPlaylistCallback(newValue.value, newValue.userName);
         }
         else {
             props.saveSelectedPlaylistCallback(null);
@@ -128,11 +138,11 @@ export function Playlists(props: PlaylistsProps) {
 
                 };
                 if (entries) {
-                    for (let i=0; i<entries.length; i++) {
+                    for (let i = 0; i < entries.length; i++) {
                         let sort = `${i}`;
                         let padLength = (defaultMaxSort.length - sort.length);
                         let pad = '';
-                        for (let j=0; j<padLength; j++) {
+                        for (let j = 0; j < padLength; j++) {
                             pad += '0';
                         }
                         groupIndex[entries[i].indexFile] = `${entries[i].userName},${pad}${i}`;
@@ -155,35 +165,49 @@ export function Playlists(props: PlaylistsProps) {
     }, [userSession, updatePlaylistCallback]);
 
     const filterPlaylists = async (inputValue: string) => {
-        let playlists: any = await getGroups(userSession);
-        let options: any[] = [];
-        for (let key in playlists) {
-            let entry = playlists[key];
-            if (!inputValue || (inputValue.length > 0 && entry.name.startsWith(inputValue))) {
-                options.push({
-                    value: entry.id,
-                    label: entry.name
-                });
+        if (userSession?.isUserSignedIn()) {
+            let playlists: any = await getGroups(userSession);
+            let options: any[] = [];
+            for (let key in playlists) {
+                let entry = playlists[key];
+                if (!inputValue || (inputValue.length > 0 && entry.name.startsWith(inputValue))) {
+                    options.push({
+                        value: entry.id,
+                        label: entry.name
+                    });
+                }
             }
+            if (props.db) {
+                let sharedGroups = await getSharedGroups(userSession, props.db);
+                if (sharedGroups && sharedGroups.length > 0) {
+                    sharedGroups.forEach(x => {
+                        options.push({
+                            value: x.id,
+                            label: `${x.title} (${x.userName})`,
+                            userName: x.userName
+                        })
+                    })
+                }
+            }
+            options.sort((x, y) => {
+                if (!x && y) {
+                    return -1;
+                }
+                else if (x && !y) {
+                    return 1;
+                }
+                else if (x.label < y.label) {
+                    return -1;
+                }
+                else if (x.label > y.label) {
+                    return 1;
+                }
+                else {
+                    return 0;
+                }
+            })
+            return options;
         }
-        options.sort((x, y) => {
-            if (!x && y) {
-                return -1;
-            }
-            else if (x && !y) {
-                return 1;
-            }
-            else if (x.label < y.label) {
-                return -1;
-            }
-            else if (x.label > y.label) {
-                return 1;
-            }
-            else {
-                return 0;
-            }
-        })
-        return options;
     }
     const promiseOptions = (inputValue: string) =>
         new Promise(resolve => {
@@ -208,12 +232,78 @@ export function Playlists(props: PlaylistsProps) {
         }
     }
 
+    const handleShare = async () => {
+        if (userSession?.isUserSignedIn() && selectedPlaylist) {
+            let friends = await getShares(userSession);
+            if (friends) {
+                const users: string[] = []
+                for (let key in friends) {
+                    let canAdd = true;
+                    if (canAdd) {
+                        users.push(key);
+                    }
+                }
+                setShareUsers(users);
+                setShareUserOpen(true);
+            }
+        }
+    }
+
+    const shareUserResult = (item: MediaMetaData | null, unshare: boolean, result: ShareUserEntry[] | undefined) => {
+        setShareUserOpen(false);
+        if (userSession && result && result.length > 0 && selectedPlaylist && !unshare) {
+            trackPromise(shareGroupIndex(userSession, selectedPlaylist.value, result, props.worker));
+        }
+    }
+
+    const handleClose = () => {
+        setOpen(false);
+    };
+
+    const handleOpen = (event: any) => {
+        if (event.type !== "focus") {
+            setOpen(true);
+        }
+    };
+
+    const handleAction = (action: any) => {
+        handleClose();
+        if (action.name === 'Add') {
+            handleAddPlaylistOpen();
+        }
+        else if (action.name === 'Edit') {
+            handleEditPlaylistOpen();
+        }
+        else if (action.name === 'Share') {
+            handleShare();
+        }
+        else if (action.name === 'Unshare') {
+        }
+        else if (action.name === 'Delete') {
+            handleDeletePlaylist();
+        }
+    }
+
+    const getActions = () => {
+        const actions = [
+            { icon: <AddIcon />, name: 'Add' }
+        ];
+        if (selectedPlaylist && !selectedPlaylist.userName) {
+            actions.push({ icon: <EditIcon />, name: 'Edit' });
+            actions.push({ icon: <ScreenShareIcon />, name: 'Share' })
+            actions.push({ icon: <StopScreenShareIcon />, name: 'Unshare' })
+        }
+        actions.push({ icon: <DeleteIcon />, name: 'Delete' })
+        return actions;
+    }
+
     return (
         <div style={{ paddingTop: props.show ? 30 : 0, paddingLeft: !props.isMobile ? 22 : 0 }}>
             {props.show &&
                 <Fragment>
                     <ConfirmDialog open={confirmDeletePlaylistOpen} item={selectedPlaylist} onResult={deleteConfirmResult} title="Confirm Delete" message={`Are you sure you want to delete the selected playlist?`} />
                     <AddPlaylistDialog open={openAdd} id={editID} setAddPlaylistDialogOpenCallback={setAddPlaylistDialogOpenCallback} db={props.db} />
+                    <ShareUserDialog open={shareUserOpen} metaData={null} initialUsers={shareUsers} unshare={false} shareUsersResult={shareUserResult} />
                     <div style={{ display: 'flex', flexDirection: 'row' }}>
                         <div style={{ flex: '1 1 auto' }}>
                             <AsyncSelect
@@ -227,10 +317,32 @@ export function Playlists(props: PlaylistsProps) {
                                 components={animatedComponents}
                                 onChange={(newValue, actionMeta) => { handleChanged(newValue) }} />
                         </div>
-                        <div onClick={handleAddPlaylistOpen} style={{ cursor: 'pointer', paddingTop: 5, paddingLeft: 3, paddingRight: 3 }}><Icon><AddIcon /></Icon></div>
-                        <div onClick={handleEditPlaylistOpen} style={{ cursor: 'pointer', paddingTop: 5, paddingLeft: 3, paddingRight: 3 }}><Icon><EditIcon /></Icon></div>
-                        <div onClick={handleDeletePlaylist} style={{ cursor: 'pointer', paddingTop: 5, paddingLeft: 3, paddingRight: 3 }}><Icon><DeleteIcon /></Icon></div>
-                        <div onClick={handlePlaylistsHide} style={{ cursor: 'pointer', paddingTop: 5, paddingLeft: 3, paddingRight: 3 }}><Icon><CloseIcon /></Icon></div>
+                        <div style={{width: 40}}>
+                        </div>
+                        <div style={{ position: 'relative' }}>
+                            <SpeedDial
+                                ariaLabel="SpeedDial example"
+                                style={{left:-43, position: 'absolute'}}
+                                icon={<MoreVertIcon />}
+                                onClose={handleClose}
+                                onOpen={handleOpen}
+                                open={open}
+                                direction={"down"}>
+                                {getActions().map((action) => (
+                                    <SpeedDialAction
+                                        key={action.name}
+                                        icon={action.icon}
+                                        tooltipTitle={action.name}
+                                        onClick={() => handleAction(action)}
+                                    />
+                                ))}
+                            </SpeedDial>
+                        </div>
+                        <div onClick={handlePlaylistsHide} style={{ cursor: 'pointer', padding: 0 }}>
+                            <IconButton style={{ minWidth: 30, outline: 'none', padding: 0 }}>
+                                <CloseIcon />
+                            </IconButton>
+                        </div>
                     </div>
                 </Fragment>
             }

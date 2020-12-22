@@ -266,7 +266,7 @@ export default function Main(props: MainProps) {
             path = "/images/browse";
         }
         else if (name === "Music") {
-            path ="/music/browse";
+            path = "/music/browse";
         }
         else if (name === "Encrypt Videos") {
             path = '/encrypt';
@@ -362,9 +362,9 @@ export default function Main(props: MainProps) {
         setSongs(new Array<BrowseEntry>());
     }, [userSession]);
 
-    const saveSelectedPlaylistCallback = useCallback(async (selected: string | null) => {
+    const saveSelectedPlaylistCallback = useCallback(async (selected: string | null, userName?: string) => {
         if (userSession?.isUserSignedIn()) {
-            await saveSelectedGroup(userSession, selected);
+            await saveSelectedGroup(userSession, selected, userName);
         }
         setVideos(new Array<BrowseEntry>());
         setPhotos(new Array<Photo>());
@@ -678,7 +678,12 @@ export default function Main(props: MainProps) {
             {videoPlayerRoute ? (
                 <Switch>
                     <Route path="/videoplayer/:access/:type/:owner/:id">
-                        <VideoPlayer isMobile={isMobile} db={props.db} />
+                        <VideoPlayer 
+                            isMobile={isMobile} 
+                            db={props.db} 
+                            showSearch={showSearch} 
+                            showFriends={showFriends} 
+                            showPlaylists={showPlaylists}/>
                     </Route>
                 </Switch>
             )
@@ -694,13 +699,24 @@ export default function Main(props: MainProps) {
 
                             <div style={{ paddingTop: browseImagesRoute && slideShowIndex != null ? 0 : 18, paddingLeft: 0, paddingRight: 0 }}>
                                 <Friends show={showFriends} showCallback={showFriendsCallback} isMobile={isMobile} saveSelectedFriendsCallback={saveSelectedFriendsCallback} />
-                                <Playlists show={showPlaylists} showCallback={showPlaylistsCallback} isMobile={isMobile} saveSelectedPlaylistCallback={saveSelectedPlaylistCallback} db={props.db} />
+                                <Playlists
+                                    show={showPlaylists}
+                                    showCallback={showPlaylistsCallback}
+                                    isMobile={isMobile}
+                                    saveSelectedPlaylistCallback={saveSelectedPlaylistCallback}
+                                    db={props.db}
+                                    worker={props.worker} />
                                 <Search show={showSearch} showCallback={showSearchCallback} isMobile={isMobile} setSearchTextCallback={setSearchTextCallback} />
 
                                 <Switch>
                                     <Route path="/videos/show/:access/:type/:id/:owner">
                                         {userSession?.isUserSignedIn() ? (
-                                            <VideoPlayer isMobile={isMobile} db={props.db} />
+                                            <VideoPlayer 
+                                                isMobile={isMobile} 
+                                                db={props.db} 
+                                                showSearch={showSearch} 
+                                                showFriends={showFriends} 
+                                                showPlaylists={showPlaylists} />
                                         ) : (
                                                 <Welcome />
                                             )

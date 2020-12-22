@@ -14,7 +14,7 @@ export interface ShareUserDialogProps {
     unshare: boolean;
     initialUsers: string[];
     metaData: MediaMetaData | null;
-    shareUsersResult: (item: MediaMetaData, unshare: boolean, shareEntries?: ShareUserEntry[]) => void;
+    shareUsersResult: (item: MediaMetaData | null, unshare: boolean, shareEntries?: ShareUserEntry[]) => void;
 }
 
 export default function ShareUserDialog(props: ShareUserDialogProps) {
@@ -36,15 +36,11 @@ export default function ShareUserDialog(props: ShareUserDialogProps) {
     };
 
     const handleCancel = () => {
-        if (props.metaData) {
-            props.shareUsersResult(props.metaData, props.unshare);
-        }
+        props.shareUsersResult(props.metaData, props.unshare);
     };
 
     const handleOk = () => {
-        if (props.metaData) {
-            props.shareUsersResult(props.metaData, props.unshare, shareEntries.slice());
-        }
+        props.shareUsersResult(props.metaData, props.unshare, shareEntries.slice());
     };
 
     const handleChange = (event: React.ChangeEvent<HTMLInputElement>, index: number) => {

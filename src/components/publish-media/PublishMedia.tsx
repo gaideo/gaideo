@@ -498,8 +498,10 @@ export default function PublishVideo(props: PublishVideoProps) {
                         });
                     }
                     ret = {
-                        metaData: copy,
-                        indexFile: indexFile
+                        id: copy.id,
+                        type: copy.type,
+                        isPublic: copy.isPublic,
+                        lastUpdatedUTC: copy.lastUpdatedUTC
                     };
                 }
                 catch (error) {
@@ -585,7 +587,12 @@ export default function PublishVideo(props: PublishVideoProps) {
                 deleteVideoEntry(metaData, userSession, null, props.updateProgressCallback);
             }
             else {
-                await updateMasterIndex(userSession, props.worker, FileOperation.Add, [{ indexFile: fname, metaData: metaData }]);
+                await updateMasterIndex(userSession, props.worker, FileOperation.Add, [{ 
+                    id: metaData.id,
+                    type: metaData.type,
+                    isPublic: metaData.isPublic,
+                    lastUpdatedUTC: metaData.lastUpdatedUTC
+                }]);
             }
         }
     }
@@ -667,7 +674,12 @@ export default function PublishVideo(props: PublishVideoProps) {
                         contentType: 'application/json'
                     })
 
-                    updateMasterIndex(userSession, props.worker, FileOperation.Update, [{ indexFile: indexFile, metaData: be.metaData }]);
+                    updateMasterIndex(userSession, props.worker, FileOperation.Update, [{ 
+                        id: be.metaData.id,
+                        type: be.metaData.type,
+                        isPublic: be.metaData.isPublic,
+                        lastUpdatedUTC: be.metaData.lastUpdatedUTC
+                    }]);
                     if (type === ImagesType) {
                         if (props.photos) {
                             for (let i = 0; i < props.photos?.length; i++) {

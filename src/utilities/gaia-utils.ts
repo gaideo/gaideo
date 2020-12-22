@@ -11,8 +11,10 @@ import { FileMetaData } from "../models/file-meta-data";
 import { SavedSearch } from "../models/saved-search";
 import { SimpleTokenizer, StopWordsTokenizer } from "js-search";
 import { stemmer } from "./porter-stemmer";
+import { getNow } from "./time-utils";
 
 export const defaultMaxSort = '99999999'
+export const SharedGroupType = "sharedgroup";
 
 export async function getPublicKey(userData: UserData, userName: string | null | undefined) {
     let publicKey;
@@ -98,7 +100,12 @@ export async function getShareRootInfo(
                 publicKey = getPublicKeyFromPrivate(userData.appPrivateKey);
             }
             else {
-                publicKey = await getPublicKey(userData, userName)
+                try {
+                    publicKey = await getPublicKey(userData, userName)
+                }
+                catch (error) {
+                    publicKey = await getPublicKey(userData, userName)
+                }
             }
             ret = getUserDirectory(publicKey);
         }
@@ -110,6 +117,43 @@ export async function getShareRootInfo(
         root: ret,
         publicKey: publicKey
     };
+}
+
+export async function loadMetaData(
+    userSession: UserSession,
+    indexFile: string,
+    userName?: string): Promise<any> {
+    try {
+        let mediaID = getFileIDFromIndexFileName(indexFile);
+        let mediaType = getTypeFromIndexFileName(indexFile);
+        if (mediaID) {
+            let userData = userSession.loadUserData();
+            let mediaRootInfo = await getShareRootInfo(userData, true, userName);
+            let content = await userSession?.getFile(indexFile, {
+                decrypt: false,
+                username: userName
+            }) as string;
+            let metaData = JSON.parse(content);
+            if (metaData.iv) {
+                let privateKey = await getPrivateKey(mediaRootInfo.root, userSession, mediaID, mediaType, userName);
+                if (privateKey) {
+                    content = await userSession.decryptContent(content, {
+                        privateKey: privateKey
+                    }) as string;
+                    metaData = JSON.parse(content);
+                }
+                else {
+                    metaData = null;
+                }
+            }
+            return metaData;
+        }
+    }
+    catch (error) {
+        console.log(error);
+    }
+    return null;
+
 }
 
 export async function updateMasterIndex(
@@ -153,17 +197,18 @@ export async function updateMasterIndex(
                     let modified = false;
                     const privateLookup: any = {};
                     for (let i = 0; i < fileEntries.length; i++) {
-                        let metaData = fileEntries[i].metaData;
+                        let fileEntry = fileEntries[i];
+                        let indexFile = `${fileEntry.type}/${fileEntry.id}.index`;
                         if (operation === FileOperation.Delete
                             || operation === FileOperation.Unshare) {
-                            if (masterIndex[fileEntries[i].indexFile]) {
-                                delete masterIndex[fileEntries[i].indexFile];
+                            if (masterIndex[indexFile]) {
+                                delete masterIndex[indexFile];
                                 modified = true;
                             }
                         }
                         else {
-                            if (operation !== FileOperation.Update || masterIndex[fileEntries[i].indexFile]) {
-                                masterIndex[fileEntries[i].indexFile] = fileEntries[i].metaData.lastUpdatedUTC;
+                            if (operation !== FileOperation.Update || masterIndex[indexFile]) {
+                                masterIndex[indexFile] = fileEntries[i].lastUpdatedUTC;
                                 modified = true;
                             }
                         }
@@ -171,9 +216,9 @@ export async function updateMasterIndex(
                             || operation === FileOperation.Unshare
                             || operation === FileOperation.Delete)
                             && modified && publicFileName) {
-                            const sharePrivateKeyFile = getPrivateKeyFileName(fileRootInfo.root, metaData.id, metaData.type);
+                            const sharePrivateKeyFile = getPrivateKeyFileName(fileRootInfo.root, fileEntry.id, fileEntry.type);
                             if (operation === FileOperation.Share) {
-                                let privateKey = await getPrivateKey('', userSession, metaData.id, metaData.type);
+                                let privateKey = await getPrivateKey('', userSession, fileEntry.id, fileEntry.type);
                                 if (privateKey) {
                                     let encryptedKey = await userSession.encryptContent(privateKey, {
                                         publicKey: fileRootInfo.publicKey
@@ -207,11 +252,18 @@ export async function updateMasterIndex(
                             for (let key in privateLookup) {
                                 try {
                                     if (operation === FileOperation.Share) {
+                                        try {
+                                            await userSession.getFile(key, {
+                                                decrypt: false
+                                            });
+                                        }
+                                        catch {
+
+                                        }
                                         await userSession.putFile(key, privateLookup[key], {
                                             encrypt: false,
                                             sign: false,
-                                            wasString: true,
-                                            dangerouslyIgnoreEtag: true
+                                            wasString: true
                                         });
                                     }
                                     else {
@@ -235,11 +287,18 @@ export async function updateMasterIndex(
                         let encryptedJson = await userSession.encryptContent(json, {
                             publicKey: fileRootInfo.publicKey
                         });
+                        try {
+                            await userSession.getFile(publicFileName, {
+                                decrypt: false
+                            });
+                        }
+                        catch {
+
+                        }
                         await userSession.putFile(publicFileName, encryptedJson, {
                             encrypt: false,
                             sign: false,
-                            wasString: true,
-                            dangerouslyIgnoreEtag: true
+                            wasString: true
                         });
                     }
 
@@ -248,7 +307,7 @@ export async function updateMasterIndex(
         }
         if (!userName) {
             for (let i = 0; i < fileEntries?.length; i++) {
-                if (fileEntries[i].metaData.isPublic) {
+                if (fileEntries[i].isPublic) {
                     if (operation === FileOperation.Add) {
                         await updateMasterIndex(userSession, gaiaWorker, FileOperation.Share, [fileEntries[i]], 'public');
                     }
@@ -265,9 +324,10 @@ export async function updateMasterIndex(
     if (gaiaWorker) {
         if (operation === FileOperation.Delete) {
             fileEntries.forEach(x => {
+                let indexFile = `${x.type}/${x.id}.index`;
                 gaiaWorker.postMessage({
                     message: "removecache",
-                    indexFile: x.indexFile
+                    indexFile: indexFile
                 })
 
             })
@@ -275,16 +335,17 @@ export async function updateMasterIndex(
         }
         else if (operation === FileOperation.Update) {
             fileEntries.forEach(x => {
+                let indexFile = `${x.type}/${x.id}.index`;
                 gaiaWorker.postMessage({
                     message: "updatecache",
-                    indexFile: x.indexFile
+                    indexFile: indexFile
                 });
             })
         }
         else if (operation === FileOperation.Add) {
             gaiaWorker.postMessage({
                 message: "cacheindexes",
-                indexFiles: fileEntries.map(x => x.indexFile)
+                indexFiles: fileEntries.map(x => `${x.type}/${x.id}.index`)
             });
         }
     }
@@ -370,6 +431,35 @@ function getSearchHashes(searchText: string, type: string) {
         hashTokens.push(key);
     }
     return hashTokens;
+}
+
+export async function getSharedGroups(userSession: UserSession, db: IDBPDatabase<unknown>) {
+    let sharedGroups: FileMetaData[] = [];
+    let friendsMap = await getShares(userSession);
+    if (friendsMap) {
+        let friends: string[] = [];
+        for (let key in friendsMap) {
+            friends.push(friendsMap[key]);
+        }
+        let entries = await getCacheEntries(userSession, db, SharedGroupType, null, null, friends);
+        if (entries && entries.cacheEntries && entries.cacheEntries.length > 0) {
+            for (let i = 0; i < entries.cacheEntries.length; i++) {
+                let cacheEntry = entries.cacheEntries[i];
+                let decryptedData: string | null = null;
+                try {
+                    decryptedData = await userSession.decryptContent(cacheEntry.data) as string;
+                }
+                catch (error) {
+                    console.log(error);
+                }
+                if (decryptedData) {
+                    let metaData = JSON.parse(decryptedData);
+                    sharedGroups.push(metaData);
+                }
+            }
+        }
+    }
+    return sharedGroups;
 }
 
 export async function getCacheEntriesFromSearch(
@@ -464,80 +554,120 @@ export async function getCacheEntriesFromGroup(
     max: number | null,
     cacheResults: CacheResults | null) {
 
+    let groupName: string | undefined = undefined;
+    let userName: string | undefined = undefined;
+    let userNameIndex = groupid.indexOf("|");
+    if (userNameIndex > 0 && userNameIndex < (groupid.length - 1)) {
+        userName = groupid.substring(userNameIndex + 1);
+        groupid = groupid.substring(0, userNameIndex);
+    }
     let allEntries: CacheEntry[] = [];
-    let sortAllEntries: SortedCacheEntry[] = [];
     let nextIndex: IDBValidKey | null = null;
+
     if (!cacheResults?.allEntries) {
         let ud = userSession.loadUserData();
         const publicKey = getPublicKeyFromPrivate(ud.appPrivateKey);
-        const groupIndex = await getGroupIndex(userSession, groupid) as any;
-        const missing: GroupEntry[] = [];
-        if (groupIndex) {
-            for (let key in groupIndex) {
-                const currentType = getTypeFromIndexFileName(key);
-                if (!type || currentType === type) {
-                    let val = groupIndex[key]
-                    let parts = getGroupIndexValues(val);
-                    let uname = parts[0];
-                    let sort = parts[1];
-                    if (uname && uname === ud.username) {
-                        uname = undefined;
-                    }
-                    const id = await createIndexID(publicKey, key, uname);
-                    let entry: CacheEntry | null = null;
-                    try {
-                        entry = await db.get('cached-indexes', id) as CacheEntry;
-                    }
-                    catch { }
-                    if (entry) {
-                        sortAllEntries.push({
-                            sort: sort,
-                            cacheEntry: entry
-                        });
-                    }
-                    else {
-                        missing.push({
-                            groupid: groupid,
-                            indexFile: key,
-                            userName: uname ? uname : ''
-                        });
+        if (userName) {
+            let indexFile = `${SharedGroupType}/${groupid}.index`;
+            let sharedGroup = await loadMetaData(userSession, indexFile, userName) as FileMetaData;
+            if (sharedGroup && sharedGroup.manifest) {
+                groupName = sharedGroup.title;
+                for (let i = 0; i < sharedGroup.manifest.length; i++) {
+                    let json = sharedGroup.manifest[i] as string;
+                    if (json) {
+                        let manifestEntry = JSON.parse(json);
+                        const currentType = getTypeFromIndexFileName(manifestEntry.indexFile);
+                        if (!type || currentType === type) {
+                            const id = await createIndexID(publicKey, manifestEntry.indexFile, manifestEntry.userName);
+                            let entry: CacheEntry | null = null;
+                            try {
+                                entry = await db.get('cached-indexes', id) as CacheEntry;
+                            }
+                            catch { }
+                            if (entry) {
+                                allEntries.push(entry);
+                            }
+                        }
                     }
                 }
             }
-            if (missing.length > 0 && gaiaWorker) {
-                gaiaWorker.postMessage({
-                    message: "validate-group-entries",
-                    missing: missing,
-                    groupid: groupid
-                });
+        }
+        else {
+            const group = await getGroup(userSession, groupid);
+            if (group) {
+                groupName = group.name;
             }
-            sortAllEntries.sort((x, y) => {
-                if (!x && y) {
-                    return -1;
+            let sortAllEntries: SortedCacheEntry[] = [];
+            const groupIndex = await getGroupIndex(userSession, groupid) as any;
+            const missing: GroupEntry[] = [];
+            if (groupIndex) {
+                for (let key in groupIndex) {
+                    const currentType = getTypeFromIndexFileName(key);
+                    if (!type || currentType === type) {
+                        let val = groupIndex[key];
+                        let parts = getGroupIndexValues(val);
+                        let uname = parts[0];
+                        let sort = parts[1];
+                        if (uname && uname === ud.username) {
+                            uname = undefined;
+                        }
+                        const id = await createIndexID(publicKey, key, uname);
+                        let entry: CacheEntry | null = null;
+                        try {
+                            entry = await db.get('cached-indexes', id) as CacheEntry;
+                        }
+                        catch { }
+                        if (entry) {
+                            sortAllEntries.push({
+                                sort: sort,
+                                cacheEntry: entry
+                            });
+                        }
+                        else {
+                            missing.push({
+                                groupid: groupid,
+                                indexFile: key,
+                                userName: uname ? uname : ''
+                            });
+                        }
+                    }
                 }
-                else if (x && !y) {
-                    return 1;
+                if (missing.length > 0 && gaiaWorker) {
+                    gaiaWorker.postMessage({
+                        message: "validate-group-entries",
+                        missing: missing,
+                        groupid: groupid
+                    });
                 }
-                else {
-                    let xs = x.sort ? x.sort : '';
-                    let ys = y.sort ? y.sort : '';
-                    if (xs < ys) {
+                sortAllEntries.sort((x, y) => {
+                    if (!x && y) {
                         return -1;
                     }
-                    else if (xs > ys) {
+                    else if (x && !y) {
                         return 1;
                     }
                     else {
-                        return 0;
+                        let xs = x.sort ? x.sort : '';
+                        let ys = y.sort ? y.sort : '';
+                        if (xs < ys) {
+                            return -1;
+                        }
+                        else if (xs > ys) {
+                            return 1;
+                        }
+                        else {
+                            return 0;
+                        }
                     }
-                }
-            })
-            allEntries = sortAllEntries.map(x => x.cacheEntry);
+                })
+                allEntries = sortAllEntries.map(x => x.cacheEntry);
+            }
         }
     }
     else {
         allEntries = cacheResults.allEntries;
     }
+
     let count = 0;
     let cacheEntries: CacheEntry[] = [];
     let startIndex = 0;
@@ -562,7 +692,8 @@ export async function getCacheEntriesFromGroup(
         cacheEntries: cacheEntries,
         nextKey: nextIndex,
         nextPrimaryKey: nextIndex,
-        allEntries: allEntries
+        allEntries: allEntries,
+        groupName: groupName
     }
 }
 
@@ -811,10 +942,10 @@ export async function getShares(userSession: UserSession) {
     return shares;
 }
 
-export async function isFileShared(userSession: UserSession, shareName: string, fileMetaData: FileMetaData) {
+export async function isFileShared(userSession: UserSession, shareName: string, id: string, type: string) {
     const userData = userSession.loadUserData();
     const rootInfo = await getShareRootInfo(userData, false, shareName);
-    const privateKeyFile = getPrivateKeyFileName(rootInfo.root, fileMetaData.id, fileMetaData.type);
+    const privateKeyFile = getPrivateKeyFileName(rootInfo.root, id, type);
     let found = true;
     try {
         await userSession.getFile(privateKeyFile, {
@@ -828,18 +959,202 @@ export async function isFileShared(userSession: UserSession, shareName: string, 
     return found;
 }
 
-export async function shareFile(fileEntries: FileMetaData[], userSession: UserSession, shareUsers: ShareUserEntry[], unshare: boolean) {
-    const files: FileEntry[] = fileEntries.map(x => {
-        return {
-            metaData: x,
-            indexFile: `${x.type}/${x.id}.index`
+export async function saveSharedGroup(userSession: UserSession, metaData: FileMetaData, isPublic: boolean, gaiaWorker: Worker | null) {
+    let fname = `${metaData.type}/${metaData.id}.index`;
+    let privateKey = await getPrivateKey('', userSession, metaData.id, metaData.type);
+
+    if (!isPublic && !privateKey) {
+        privateKey = await createPrivateKey(userSession, metaData.id, metaData.type);
+    }
+    let added: boolean | undefined = undefined;
+    if (privateKey || isPublic) {
+        added = true;
+        let data = JSON.stringify(metaData);
+        if (privateKey) {
+            let publicKey = getPublicKeyFromPrivate(privateKey);
+            data = await userSession.encryptContent(data, {
+                publicKey: publicKey
+            });
         }
-    });
+        try {
+            let results = await userSession.getFile(fname, {
+                decrypt: false
+            })
+            if (results) {
+                added = false;
+            }
+        }
+        catch {
+            added = true;
+        }
+        await userSession.putFile(fname, data, {
+            encrypt: false,
+            wasString: true,
+            contentType: 'application/json'
+        })
+        await updateMasterIndex(userSession, gaiaWorker, added ? FileOperation.Add : FileOperation.Update, [{
+            id: metaData.id,
+            type: metaData.type,
+            isPublic: metaData.isPublic,
+            lastUpdatedUTC: metaData.lastUpdatedUTC
+        }]);
+    }
+    return added;
+}
+
+export async function unshareGroupIndex(userSession: UserSession, groupid: string, shareUsers: ShareUserEntry[], gaiaWorker: Worker | null) {
+    let id = createHashAddress([groupid]);
+    let indexFile = `${SharedGroupType}/${id}.index`;
+    let metaData = await loadMetaData(userSession, indexFile) as FileMetaData;
+    let ud = userSession.loadUserData();
+    if (metaData) {
+        if (metaData.manifest) {
+            for (let i = 0; i < metaData.manifest.length; i++) {
+                let json = metaData.manifest[i] as string;
+                if (json) {
+                    let manifestEntry = JSON.parse(json);
+                    if (manifestEntry.userName === ud.username) {
+                        const currentType = getTypeFromIndexFileName(manifestEntry.indexFile);
+                        const currentid = getIDFromIndexFileName(manifestEntry.indexFile);
+                        for (let j = 0; j < shareUsers.length; j++) {
+                            const isShared = await isFileShared(userSession, shareUsers[j].userName, currentid, currentType);
+                            if (isShared) {
+                                let fileEntry: FileEntry = {
+                                    id: currentid,
+                                    type: currentType
+                                };
+                                await updateMasterIndex(userSession, null, FileOperation.Unshare, [fileEntry], shareUsers[j].userName);
+
+                            }
+                        }
+                    }
+                }
+
+            }
+            for (let j = 0; j < shareUsers.length; j++) {
+                const isShared = await isFileShared(userSession, shareUsers[j].userName, metaData.id, metaData.type);
+                if (isShared) {
+                    let fileEntry: FileEntry = {
+                        id: metaData.id,
+                        type: metaData.type
+                    };
+                    await updateMasterIndex(userSession, null, FileOperation.Unshare, [fileEntry], shareUsers[j].userName);
+
+                }
+            }
+        }
+    }
+}
+
+export async function shareGroupIndex(userSession: UserSession, groupid: string, shareUsers: ShareUserEntry[], gaiaWorker: Worker | null) {
+    let group = await getGroup(userSession, groupid);
+    if (group) {
+        let groupIndex = await getGroupIndex(userSession, groupid) as any;
+        if (groupIndex) {
+            const ud = userSession.loadUserData();
+            let nowUTC = getNow();
+            const metaData: FileMetaData = {
+                id: createHashAddress([groupid]),
+                title: group.name,
+                description: '',
+                userName: ud.username,
+                type: SharedGroupType,
+                manifest: [],
+                createdDateUTC: nowUTC,
+                lastUpdatedUTC: nowUTC,
+                identityAddress: ud.identityAddress
+            }
+            const entries: any[] = [];
+            const shareEntries: FileMetaData[] = [];
+            for (let key in groupIndex) {
+                let val = groupIndex[key];
+                let parts = getGroupIndexValues(val);
+                let uname = parts[0];
+                let sort = parts[1];
+                let metaData = await loadMetaData(userSession, key, uname === ud.username ? undefined : uname);
+                if (metaData) {
+                    if (uname === ud.username) {
+                        shareEntries.push(metaData);
+                    }
+                    entries.push({
+                        sort: sort,
+                        metaData: metaData
+                    });
+                }
+            }
+            entries.sort((x, y) => {
+                if (!x && y) {
+                    return -1;
+                }
+                else if (x && !y) {
+                    return 1;
+                }
+                else {
+                    let xs = x.sort ? x.sort : '';
+                    let ys = y.sort ? y.sort : '';
+                    if (xs < ys) {
+                        return -1;
+                    }
+                    else if (xs > ys) {
+                        return 1;
+                    }
+                    else {
+                        return 0;
+                    }
+                }
+            });
+            const manifestEntries: string[] = [];
+            for (let i = 0; i < entries.length; i++) {
+                let fileMetaData: FileMetaData = entries[i].metaData;
+                let manifestEntry: any = {
+                    indexFile: `${fileMetaData.type}/${fileMetaData.id}.index`,
+                    userName: fileMetaData.userName
+                }
+                manifestEntries.push(JSON.stringify(manifestEntry));
+            }
+            metaData.manifest = manifestEntries;
+            shareEntries.push(metaData);
+            let added = await saveSharedGroup(userSession, metaData, false, null);
+            let alreadySharedLookup: any = {};
+            if (added === false) {
+                for (let i = 0; i < shareEntries.length; i++) {
+                    for (let j = 0; j < shareUsers?.length; j++) {
+                        let isShared = await isFileShared(userSession, shareUsers[j].userName, shareEntries[i].id, shareEntries[i].type);
+                        if (isShared) {
+                            alreadySharedLookup[`${shareEntries[i].id}_${shareUsers[j].userName}`] = true;
+                        }
+                    }
+                }
+            }
+            await shareFile(shareEntries, userSession, shareUsers, false, alreadySharedLookup);
+        }
+    }
+}
+
+export async function shareFile(
+    fileEntries: FileEntry[],
+    userSession: UserSession,
+    shareUsers: ShareUserEntry[],
+    unshare: boolean,
+    alreadySharedLookup?: any) {
     const op = unshare ? FileOperation.Unshare : FileOperation.Share;
     for (let i = 0; i < shareUsers.length; i++) {
         let su = shareUsers[i]
         if (su.share) {
-            await updateMasterIndex(userSession, null, op, files, su.userName);
+            let newFiles: FileEntry[] = [];
+            if (alreadySharedLookup) {
+                for (let j = 0; j < fileEntries?.length; j++) {
+                    const key = `${fileEntries[j].id}_${su.userName}`;
+                    if (alreadySharedLookup[key]) {
+                        continue;
+                    }
+                    newFiles.push(fileEntries[j]);
+                }
+            }
+            else {
+                newFiles = fileEntries;
+            }
+            await updateMasterIndex(userSession, null, op, newFiles, su.userName);
         }
     }
 }
@@ -933,10 +1248,10 @@ export async function updateGroup(userSession: UserSession, group: Group, delete
     }
 }
 
-export async function getGroups(userSession: UserSession | null | undefined) {
+export async function getGroups(userSession: UserSession) {
     let groups: any = {};
     try {
-        let json = await userSession?.getFile("group-index", {
+        let json = await userSession.getFile("group-index", {
             decrypt: true,
             verify: true
         }) as string;
@@ -976,9 +1291,13 @@ export async function getSelectedGroup(userSession: UserSession) {
     return selectedGroup;
 }
 
-export async function saveSelectedGroup(userSession: UserSession, selectedGroup: string | null) {
+export async function saveSelectedGroup(userSession: UserSession, selectedGroup: string | null, userName?: string) {
     try {
-        await userSession.putFile('selected-group', selectedGroup ? selectedGroup : '', {
+        let key = selectedGroup;
+        if (key && userName) {
+            key = `${key}|${userName}`;
+        }
+        await userSession.putFile('selected-group', key ? key : '', {
             encrypt: true,
             sign: true
         })

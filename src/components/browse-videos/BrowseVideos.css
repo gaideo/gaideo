@@ -11,3 +11,9 @@
     cursor: pointer
 }
 
+
+.MuiFab-root {
+    width: 36px !important;
+    height: 25px !important;
+  }
+

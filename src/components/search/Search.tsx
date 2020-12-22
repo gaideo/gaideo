@@ -4,12 +4,14 @@ import DeleteIcon from '@material-ui/icons/Delete';
 import CloseIcon from '@material-ui/icons/Close';
 import AsyncSelect from 'react-select/async';
 import makeAnimated from 'react-select/animated';
-import { Icon } from '@material-ui/core';
+import { IconButton } from '@material-ui/core';
 import { createHashAddress, getSavedSearches, updateSavedSearch } from '../../utilities/gaia-utils';
 import { useConnect } from '@blockstack/connect';
 import { SavedSearch } from '../../models/saved-search';
 import { getNow } from '../../utilities/time-utils';
 import { trackPromise } from 'react-promise-tracker';
+import { SpeedDial, SpeedDialAction } from '@material-ui/lab';
+import MoreVertIcon from '@material-ui/icons/MoreVert';
 
 
 interface ShowCallback {
@@ -35,6 +37,7 @@ export function Search(props: SearchProps) {
     const [savedSearches, setSavedSearches] = useState(new Array<SavedSearch>());
     const [selectedSearch, setSelectedSearch] = useState<any>(null);
     const [changeKey, setChangeKey] = useState('');
+    const [open, setOpen] = React.useState(false);
 
     useEffect(() => {
         const refresh = async () => {
@@ -202,6 +205,36 @@ export function Search(props: SearchProps) {
 
     const animatedComponents = makeAnimated();
 
+    const handleClose = () => {
+        setOpen(false);
+    };
+
+    const handleOpen = (event: any) => {
+        if (event.type !== "focus") {
+            setOpen(true);
+        }
+    };
+
+    const handleAction = (action: any) => {
+        handleClose();
+        if (action.name === 'Save') {
+            trackPromise(handleSaveSearch());
+        }
+        else if (action.name === 'Delete') {
+            handleDeleteSearch();
+        }
+    }
+
+    const getActions = () => {
+        const actions = [
+            { icon: <SaveIcon />, name: 'Save' }            
+        ];
+        if (selectedSearch) {
+            actions.push({ icon: <DeleteIcon />, name: 'Delete' })
+        }
+        return actions;
+    }
+
     return (
         <div style={{ paddingTop: props.show ? 30 : 0, paddingLeft: !props.isMobile ? 22 : 0 }}>
             {props.show &&
@@ -220,9 +253,33 @@ export function Search(props: SearchProps) {
                                 onInputChange={(newValue, actionMeta) => handleInputChanged(newValue)}
                                 onChange={(newValue, actionMeta) => { handleChanged(newValue) }} />
                         </div>
-                        <div onClick={() => { trackPromise(handleSaveSearch()) }} style={{ cursor: 'pointer', paddingTop: 5, paddingLeft: 3, paddingRight: 3 }}><Icon><SaveIcon /></Icon></div>
-                        <div onClick={handleDeleteSearch} style={{ cursor: 'pointer', paddingTop: 5, paddingLeft: 3, paddingRight: 3 }}><Icon><DeleteIcon /></Icon></div>
-                        <div onClick={handleSearchHide} style={{ cursor: 'pointer', paddingTop: 5, paddingLeft: 3, paddingRight: 3 }}><Icon><CloseIcon /></Icon></div>
+                        <div style={{width: 40}}>
+
+                        </div>
+                        <div style={{ position: 'relative' }}>
+                            <SpeedDial
+                                style={{left:-43, position: 'absolute'}}
+                                ariaLabel="Friend Action Menu"
+                                icon={<MoreVertIcon />}
+                                onClose={handleClose}
+                                onOpen={handleOpen}
+                                open={open}
+                                direction={"down"}>
+                                {getActions().map((action) => (
+                                    <SpeedDialAction
+                                        key={action.name}
+                                        icon={action.icon}
+                                        tooltipTitle={action.name}
+                                        onClick={() => handleAction(action)}
+                                    />
+                                ))}
+                            </SpeedDial>
+                        </div>
+                        <div onClick={handleSearchHide} style={{ cursor: 'pointer', padding: 0 }}>
+                            <IconButton style={{ minWidth: 30, outline: 'none', padding: 0 }}>
+                                <CloseIcon />
+                            </IconButton>
+                        </div>
                     </div>
                 </Fragment>
             }
