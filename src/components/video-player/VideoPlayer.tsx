@@ -47,6 +47,7 @@ export function VideoPlayer(props: VideoPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [autoPlay, setAutoPlay] = useState(true);
   const [shuffle, setShuffle] = useState(false);
+  const [repeat, setRepeat] = useState(false);
   const history = useHistory();
 
   useEffect(() => {
@@ -308,7 +309,10 @@ export function VideoPlayer(props: VideoPlayerProps) {
   const playNext = async () => {
     if (autoPlay && playlistId && userSession?.isUserSignedIn()) {
       let index;
-      if (shuffle && playlistEntries.length > 1) {
+      if (repeat) {
+        index = playlistIndex;
+      }
+      else if (shuffle && playlistEntries.length > 1) {
         index = Math.floor((Math.random() * playlistEntries.length));
       }
       else {
@@ -442,7 +446,22 @@ export function VideoPlayer(props: VideoPlayerProps) {
                 />
               </div>
               <div style={{ whiteSpace: 'nowrap' }}>
+              <FormControlLabel style={{ marginRight: 0 }}
+                  disabled={!autoPlay}
+                  control={
+                    <Switch
+                      checked={repeat}
+                      onChange={() => setRepeat(!repeat)}
+                      name="checkedB"
+                      color="primary"
+                    />
+                  }
+                  label="Repeat"
+                />
+              </div>
+              <div style={{ whiteSpace: 'nowrap' }}>
                 <FormControlLabel style={{ marginRight: 0 }}
+                  disabled={!autoPlay || repeat}
                   control={
                     <Switch
                       checked={shuffle}

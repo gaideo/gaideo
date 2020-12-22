@@ -1073,7 +1073,7 @@ export async function shareGroupIndex(userSession: UserSession, groupid: string,
                 let sort = parts[1];
                 let metaData = await loadMetaData(userSession, key, uname === ud.username ? undefined : uname);
                 if (metaData) {
-                    if (uname === ud.username) {
+                    if (uname === ud.username && !metaData.isPublic) {
                         shareEntries.push(metaData);
                     }
                     entries.push({
