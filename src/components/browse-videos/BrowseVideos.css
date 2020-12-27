@@ -11,14 +11,3 @@
     cursor: pointer
 }
 
-
-.MuiFab-root {
-    width: 36px !important;
-    height: 25px !important;
-  }
-
-.MuiButtonBase-root {
-    margin-top: 3px !important;
-    margin-bottom: 0px !important;
-}
-

@@ -275,7 +275,7 @@ export function Search(props: SearchProps) {
                                 ))}
                             </SpeedDial>
                         </div>
-                        <div onClick={handleSearchHide} style={{ cursor: 'pointer', padding: 0 }}>
+                        <div className={'close-button'} onClick={handleSearchHide} style={{ cursor: 'pointer', padding: 0 }}>
                             <IconButton style={{ minWidth: 30, outline: 'none', padding: 0 }}>
                                 <CloseIcon />
                             </IconButton>

@@ -99,6 +99,9 @@ export default function Main(props: MainProps) {
             zIndex: theme.zIndex.drawer + 1,
             color: '#fff',
         },
+        buttonroot: {
+            marginTop: 0
+        }
     }));
 
     const classes = useStyles();
@@ -541,17 +544,24 @@ export default function Main(props: MainProps) {
                 </Backdrop>
             }
 
-            <Toolbar disableGutters={true} style={{ whiteSpace: 'nowrap', justifyContent: 'space-between', height: 40, minHeight: 40 }}>
-                <Hidden mdUp implementation="css">
-                    <IconButton
+            <Toolbar disableGutters={true} style={{ whiteSpace: 'nowrap', alignContent: 'center', justifyContent: 'space-between', height: 40, minHeight: 40 }}>
+                <Hidden mdUp implementation="css" >
+                    <div style={{display: 'flex', flexDirection: 'row'}}>
+                        <div>
+                        <IconButton
+                        classes={{root: classes.buttonroot}}
                         color="inherit"
                         aria-label="open drawer"
                         edge={'start'}
                         onClick={handleSmallDevice}
-                        style={{ paddingTop: 0, paddingBottom: 0, paddingLeft: 20, minWidth: 40 }}
+                        style={{ paddingTop: 0, paddingBottom: 0, paddingLeft: 20, minWidth: 40, verticalAlign: 'middle' }}
                     >  <MenuIcon />
                     </IconButton>
-                    {userSession?.isUserSignedIn() &&
+                        </div>
+                        <div>
+                        <img alt="Gaideo" style={{marginTop: 5}} src="gaideo.png" width="78" height="30"/>
+                        </div>
+                        {userSession?.isUserSignedIn() &&
                         <Drawer
                             style={{ width: state ? drawerWidth : 0 }}
                             classes={{
@@ -563,10 +573,7 @@ export default function Main(props: MainProps) {
                             {drawer}
                         </Drawer>
                     }
-
-                    <Typography component="span" variant="h6" className={classes.title}>
-                        Gaideo
-                </Typography>
+                    </div>
                 </Hidden>
                 <Hidden smDown implementation="css">
                     {userSession?.isUserSignedIn() &&
@@ -581,7 +588,7 @@ export default function Main(props: MainProps) {
                         </Drawer>
                     }
                     <div style={{ display: 'flex', flexDirection: 'row', paddingLeft: userSession?.isUserSignedIn() ? 180 : 0 }}>
-                        <div>
+                        <div style={{paddingTop: 3}}>
                             <Icon>
                                 {isVideos ? <MovieIcon />
                                     : isImages ? <CameraEnhanceOutlinedIcon />
@@ -592,10 +599,10 @@ export default function Main(props: MainProps) {
                                                         : <div></div>}
                             </Icon>
                         </div>
-                        <div style={{ marginBottom: 0, marginTop: -2, paddingLeft: 5 }}>
-                            <Typography variant="h6" className={classes.title}>
-                                Gaideo
-                          </Typography>
+                        <div style={{ marginBottom: 0, paddingLeft: 5 }}>
+                            <div>
+                            <img alt="Gaideo" style={{paddingTop: 3}} src="gaideo.png" width="78" height="30"/>
+                            </div>
                         </div>
                     </div>
                 </Hidden>

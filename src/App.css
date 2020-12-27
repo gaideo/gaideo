@@ -59,3 +59,32 @@
   padding-top: 23px !important;
   flex-direction: column;
 }
+
+.MuiListItem-button .MuiSvgIcon-root, .material-icons .MuiSvgIcon-root
+, .MuiIconButton-label .MuiSvgIcon-root
+, .MuiStepIcon-root {
+  color: #2db93a !important
+}
+
+.MuiFormControl-root .MuiIconButton-label .MuiSvgIcon-root, .close-button .MuiIconButton-label .MuiSvgIcon-root {
+  color: inherit !important
+}
+
+.MuiFab-root {
+  width: 36px !important;
+  height: 25px !important;
+}
+
+.MuiSpeedDial-actions .MuiButtonBase-root {
+  margin-top: 3px !important;
+  margin-bottom: 0px !important;
+  color: #2db93a !important;
+}
+
+.MuiDrawer-paper {
+  background-color: rgb(212, 227, 234) !important;
+}
+
+.MuiButton-containedPrimary, .MuiFab-primary {
+  background-color: #2db93a !important;
+}
