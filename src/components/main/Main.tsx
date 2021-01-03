@@ -508,7 +508,7 @@ export default function Main(props: MainProps) {
     const appfuncTitle = isInWebView() ? "Refresh" : "List Files";
 
     const appBar = (
-        <AppBar style={{ visibility: browseImagesRoute && slideShowIndex != null ? 'hidden' : undefined, backgroundColor: '#d4e3ea', color: 'rgba(0,0,0,.87)' }} position='fixed'>
+        <AppBar style={{ visibility: browseImagesRoute && slideShowIndex != null ? 'hidden' : undefined, backgroundColor: '#EFFDFF', color: 'rgba(0,0,0,.87)' }} position='fixed'>
             {
                 promiseInProgress &&
                 <Backdrop className={classes.backdrop} open={promiseInProgress}>

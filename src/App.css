@@ -63,7 +63,7 @@
 .MuiListItem-button .MuiSvgIcon-root, .material-icons .MuiSvgIcon-root
 , .MuiIconButton-label .MuiSvgIcon-root
 , .MuiStepIcon-root {
-  color: #2db93a !important
+  color: #395F3A !important
 }
 
 .MuiFormControl-root .MuiIconButton-label .MuiSvgIcon-root, .close-button .MuiIconButton-label .MuiSvgIcon-root {
@@ -78,13 +78,13 @@
 .MuiSpeedDial-actions .MuiButtonBase-root {
   margin-top: 3px !important;
   margin-bottom: 0px !important;
-  color: #2db93a !important;
+  color: #395F3A !important;
 }
 
 .MuiDrawer-paper {
-  background-color: rgb(212, 227, 234) !important;
+  background-color: #EFFDFF !important;
 }
 
 .MuiButton-containedPrimary, .MuiFab-primary {
-  background-color: #2db93a !important;
+  background-color: #395F3A !important;
 }
