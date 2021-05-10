@@ -26,6 +26,36 @@ export default function App() {
   }, []);
 
 
+  const setupJSBridge = () => {
+    let w: any = window;
+    if (!w.webkit && w.JSBridge) {
+      w.webkit = {};
+      w.webkit.messageHandlers = {};
+      w.webkit.messageHandlers.gaideoMessageHandler = {};
+      w.webkit.messageHandlers.gaideoMessageHandler.postMessage = async (data: any) => {
+        await sendBridgeData(data);
+      };
+      w.ffmpegCallback = (callbackid: string, type: string, data?: string, name?: string) => {
+        let element: any = document.getElementById(callbackid);
+        if (!element || !element.ffmpegCallback) {
+          return false;
+        }
+        element.ffmpegCallback(type, data, name);
+        return true;
+      };
+    }
+  }
+
+  const sendBridgeData = (data: any) => {
+    new Promise<boolean>(resolve => {
+      const w: any = window;
+      w.JSBridge.postMessage(JSON.stringify(data))
+      resolve(true);
+    });
+  }
+
+  setupJSBridge();
+
   const initDatabase = async () => {
     let ret = await openDB("gaideodb", 2, {
       upgrade(db, oldVersion, newVersion, transaction) {
@@ -164,10 +194,10 @@ export default function App() {
       <Connect authOptions={authOptions}>
         <HashRouter>
 
-          <Main 
-            userData={userData} 
-            setUserDataCallback={setUserDataCallback} 
-            db={db} 
+          <Main
+            userData={userData}
+            setUserDataCallback={setUserDataCallback}
+            db={db}
             worker={worker ? worker : null}
             newVideosCount={newVideosCount}
             setNewVideosCountCallback={setNewVideosCountCallback}
@@ -175,7 +205,7 @@ export default function App() {
             setNewPhotosCountCallback={setNewPhotosCountCallback}
             newMusicCount={newMusicCount}
             setNewMusicCountCallback={setNewMusicCountCallback}
-            />
+          />
         </HashRouter>
       </Connect>
     </ThemeProvider>

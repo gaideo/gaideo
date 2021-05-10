@@ -33,6 +33,7 @@ import { listFiles, saveSelectedShares, saveSelectedGroup } from '../../utilitie
 import { Playlists } from '../playlists/Playlists';
 import { Search } from '../search/Search';
 import { MusicType, VideosType } from '../../utilities/media-utils';
+import ArrowBackIosOutlinedIcon from '@material-ui/icons/ArrowBackIosOutlined';
 
 const drawerWidth = 240;
 
@@ -205,13 +206,21 @@ export default function Main(props: MainProps) {
         }
     };
 
+    const goBack = () => {
+        history.goBack();
+    }
+
     const handleClose = () => {
         setAnchorEl(null);
     }
 
     const isInWebView = () => {
         const w: any = window;
-        return w.webkit && w.webkit.messageHandlers && w.webkit.messageHandlers.gaideoMessageHandler;
+        let ret = false;
+        if (w.webkit && w.webkit.messageHandlers && w.webkit.messageHandlers.gaideoMessageHandler) {
+            ret = true;
+        }
+        return ret;
     }
 
     const handleMenu = (option: string) => {
@@ -546,33 +555,42 @@ export default function Main(props: MainProps) {
 
             <Toolbar disableGutters={true} style={{ whiteSpace: 'nowrap', alignContent: 'center', justifyContent: 'space-between', height: 40, minHeight: 40 }}>
                 <Hidden mdUp implementation="css" >
-                    <div style={{display: 'flex', flexDirection: 'row'}}>
+                    <div style={{ display: 'flex', flexDirection: 'row' }}>
+                        {isInWebView() &&
+                            <div>
+                                <IconButton onClick={goBack}
+                                    style={{ paddingTop: 0, paddingBottom: 0, paddingRight: 0, paddingLeft: 0, minWidth: 40, verticalAlign: 'middle' }}>
+                                    <ArrowBackIosOutlinedIcon />
+                                    
+                                </IconButton>
+                            </div>
+                        }
                         <div>
-                        <IconButton
-                        classes={{root: classes.buttonroot}}
-                        color="inherit"
-                        aria-label="open drawer"
-                        edge={'start'}
-                        onClick={handleSmallDevice}
-                        style={{ paddingTop: 0, paddingBottom: 0, paddingLeft: 20, minWidth: 40, verticalAlign: 'middle' }}
-                    >  <MenuIcon />
-                    </IconButton>
+                            <IconButton
+                                classes={{ root: classes.buttonroot }}
+                                color="inherit"
+                                aria-label="open drawer"
+                                edge={'start'}
+                                onClick={handleSmallDevice}
+                                style={{ paddingTop: 0, paddingBottom: 0, paddingLeft: 20, minWidth: 40, verticalAlign: 'middle' }}
+                            >  <MenuIcon />
+                            </IconButton>
                         </div>
                         <div>
-                        <img alt="Gaideo" style={{marginTop: 5}} src="gaideo.png" width="112" height="30"/>
+                            <img alt="Gaideo" style={{ marginTop: 5 }} src="gaideo.png" width="112" height="30" />
                         </div>
                         {userSession?.isUserSignedIn() &&
-                        <Drawer
-                            style={{ width: state ? drawerWidth : 0 }}
-                            classes={{
-                                paper: classes.drawer,
-                            }}
-                            open={state}
-                            onClose={handleSmallDevice}
-                        >
-                            {drawer}
-                        </Drawer>
-                    }
+                            <Drawer
+                                style={{ width: state ? drawerWidth : 0 }}
+                                classes={{
+                                    paper: classes.drawer,
+                                }}
+                                open={state}
+                                onClose={handleSmallDevice}
+                            >
+                                {drawer}
+                            </Drawer>
+                        }
                     </div>
                 </Hidden>
                 <Hidden smDown implementation="css">
@@ -588,7 +606,7 @@ export default function Main(props: MainProps) {
                         </Drawer>
                     }
                     <div style={{ display: 'flex', flexDirection: 'row', paddingLeft: userSession?.isUserSignedIn() ? 180 : 0 }}>
-                        <div style={{paddingTop: 3}}>
+                        <div style={{ paddingTop: 3 }}>
                             <Icon>
                                 {isVideos ? <MovieIcon />
                                     : isImages ? <CameraEnhanceOutlinedIcon />
@@ -601,7 +619,7 @@ export default function Main(props: MainProps) {
                         </div>
                         <div style={{ marginBottom: 0, paddingLeft: 5 }}>
                             <div>
-                            <img alt="Gaideo" style={{paddingTop: 3}} src="gaideo.png" width="112" height="30"/>
+                                <img alt="Gaideo" style={{ paddingTop: 3 }} src="gaideo.png" width="112" height="30" />
                             </div>
                         </div>
                     </div>
@@ -685,12 +703,12 @@ export default function Main(props: MainProps) {
             {videoPlayerRoute ? (
                 <Switch>
                     <Route path="/videoplayer/:access/:type/:owner/:id">
-                        <VideoPlayer 
-                            isMobile={isMobile} 
-                            db={props.db} 
-                            showSearch={showSearch} 
-                            showFriends={showFriends} 
-                            showPlaylists={showPlaylists}/>
+                        <VideoPlayer
+                            isMobile={isMobile}
+                            db={props.db}
+                            showSearch={showSearch}
+                            showFriends={showFriends}
+                            showPlaylists={showPlaylists} />
                     </Route>
                 </Switch>
             )
@@ -718,11 +736,11 @@ export default function Main(props: MainProps) {
                                 <Switch>
                                     <Route path="/videos/show/:access/:type/:id/:owner">
                                         {userSession?.isUserSignedIn() ? (
-                                            <VideoPlayer 
-                                                isMobile={isMobile} 
-                                                db={props.db} 
-                                                showSearch={showSearch} 
-                                                showFriends={showFriends} 
+                                            <VideoPlayer
+                                                isMobile={isMobile}
+                                                db={props.db}
+                                                showSearch={showSearch}
+                                                showFriends={showFriends}
                                                 showPlaylists={showPlaylists} />
                                         ) : (
                                                 <Welcome />

@@ -39,7 +39,7 @@ const createMasterIndex = async () => {
     await userSession.listFiles(name => {
         let foundMediaFile = false;
         if (fileTypes) {
-            for (let i=0; i<fileTypes.length; i++) {
+            for (let i = 0; i < fileTypes.length; i++) {
                 if (name.startsWith(`${fileTypes[i]}/`)) {
                     foundMediaFile = true;
                     break;
@@ -185,7 +185,7 @@ const removeCachedIndex = async (indexFile, pk) => {
     if (pk) {
         publicKey = pk;
     }
-    else if (sessionData?.userData?.appPrivateKey) {
+    else if (sessionData && sessionData.userData && sessionData.userData.appPrivateKey) {
         publicKey = blockstack.getPublicKeyFromPrivate(sessionData.userData.appPrivateKey);
     }
     if (publicKey) {
@@ -198,7 +198,10 @@ const removeCachedIndex = async (indexFile, pk) => {
 }
 
 const getIDFromIndexFileName = (fileName) => {
-    let i = fileName?.lastIndexOf('/');
+    let i = -1;
+    if (fileName) {
+        i = fileName.lastIndexOf('/');
+    }
     if (i >= 0) {
         return fileName.substring(i + 1).replace('.index', '');
     }
@@ -218,7 +221,7 @@ const updateCachedIndex = async (indexFile, pk) => {
     if (pk) {
         ownerPublicKey = pk;
     }
-    else if (sessionData?.userData?.appPrivateKey) {
+    else if (sessionData && sessionData.userData && sessionData.userData.appPrivateKey) {
         ownerPublicKey = blockstack.getPublicKeyFromPrivate(sessionData.userData.appPrivateKey);
     }
     if (ownerPublicKey) {
@@ -251,7 +254,7 @@ const updateCachedIndex = async (indexFile, pk) => {
 }
 
 const addIndexesToCache = async (indexFiles) => {
-    if (sessionData?.userData?.appPrivateKey) {
+    if (sessionData && sessionData.userData && sessionData.userData.appPrivateKey) {
         publicKey = blockstack.getPublicKeyFromPrivate(sessionData.userData.appPrivateKey);
         for (let i = 0; i < indexFiles.length; i++) {
             let indexFile = indexFiles[i];
@@ -266,26 +269,28 @@ const udpateSearchHashesForText = async (cacheid, text, type) => {
     const maxHashLength = 9;
     const minRelevant = 3;
     const tokens = getSearchTokens(text, minRelevant);
-    for (let i = 0; i < tokens?.length; i++) {
-        const t = tokens[i];
-        for (let j = minRelevant - 1; j < t.length; j++) {
-            let idBuffer;
-            if (j < maxHashLength) {
-                const x = `${type}_${t.substring(0, j + 1)}`;
-                idBuffer = new TextEncoder().encode(x);
+    if (tokens) {
+        for (let i = 0; i < tokens.length; i++) {
+            const t = tokens[i];
+            for (let j = minRelevant - 1; j < t.length; j++) {
+                let idBuffer;
+                if (j < maxHashLength) {
+                    const x = `${type}_${t.substring(0, j + 1)}`;
+                    idBuffer = new TextEncoder().encode(x);
+                }
+                else {
+                    break;
+                }
+                const hashToken = blockstack.publicKeyToAddress(idBuffer);
+                idBuffer = new TextEncoder().encode(`${cacheid}_${hashToken}`);
+                const searchHashId = blockstack.publicKeyToAddress(idBuffer);
+                let searchEntry = {
+                    id: searchHashId,
+                    hashid: hashToken,
+                    cacheid: cacheid
+                };
+                await db.put('searchable-hashes', searchEntry);
             }
-            else {
-                break;
-            }
-            const hashToken = blockstack.publicKeyToAddress(idBuffer);
-            idBuffer = new TextEncoder().encode(`${cacheid}_${hashToken}`);
-            const searchHashId = blockstack.publicKeyToAddress(idBuffer);
-            let searchEntry = {
-                id: searchHashId,
-                hashid: hashToken,
-                cacheid: cacheid
-            };
-            await db.put('searchable-hashes', searchEntry);
         }
     }
 }
@@ -328,27 +333,29 @@ const saveGaiaIndexesToCache = async (userName, isPublic) => {
             existingCache = {};
             const index = db.transaction('cached-indexes').store.index('section');
             if (index) {
-                for (let i = 0; i < fileTypes?.length; i++) {
-                    let cursor = await index.openCursor(`${ownerPublicKey}_${fileTypes[i]}`);
-                    while (cursor) {
-                        let canAdd = true;
-                        if (!userName && cursor.value.shareName) {
-                            canAdd = false;
+                if (fileTypes) {
+                    for (let i = 0; i < fileTypes.length; i++) {
+                        let cursor = await index.openCursor(`${ownerPublicKey}_${fileTypes[i]}`);
+                        while (cursor) {
+                            let canAdd = true;
+                            if (!userName && cursor.value.shareName) {
+                                canAdd = false;
+                            }
+                            else if (userName
+                                && (!cursor.value.shareName || userName.toLowerCase() !== cursor.value.shareName.toLowerCase())) {
+                                canAdd = false;
+                            }
+                            else if (cursor.value.isPublic && !isPublic) {
+                                canAdd = false;
+                            }
+                            else if (!cursor.value.isPublic && isPublic) {
+                                canAdd = false;
+                            }
+                            if (canAdd) {
+                                existingCache[cursor.value.id] = cursor.value.lastUpdated;
+                            }
+                            cursor = await cursor.continue();
                         }
-                        else if (userName
-                            && (!cursor.value.shareName || userName.toLowerCase() !== cursor.value.shareName.toLowerCase())) {
-                            canAdd = false;
-                        }
-                        else if (cursor.value.isPublic && !isPublic) {
-                            canAdd = false;
-                        }
-                        else if (!cursor.value.isPublic && isPublic) {
-                            canAdd = false;
-                        }
-                        if (canAdd) {
-                            existingCache[cursor.value.id] = cursor.value.lastUpdated;
-                        }
-                        cursor = await cursor.continue();
                     }
                 }
             }
@@ -467,12 +474,14 @@ const initializeUserSession = (e) => {
 const getShares = async () => {
     let shares = {};
     try {
-        let json = await userSession?.getFile("share-index", {
-            decrypt: true,
-            verify: true
-        });
-        if (json) {
-            shares = JSON.parse(json);
+        if (userSession) {
+            let json = await userSession.getFile("share-index", {
+                decrypt: true,
+                verify: true
+            });
+            if (json) {
+                shares = JSON.parse(json);
+            }
         }
     }
     catch {
@@ -545,7 +554,7 @@ self.addEventListener(
                 try {
                     await initializeDatabase();
                     initializeUserSession(e);
-                    if (userSession?.isUserSignedIn()) {
+                    if (userSession && userSession.isUserSignedIn()) {
                         try {
                             await userSession.getFile('master-index', {
                                 decrypt: true,
@@ -600,8 +609,10 @@ self.addEventListener(
                 break;
             case "cacheindexes":
                 message = 'Unable to add index to cache.';
-                if (userSession?.isUserSignedIn()
-                    && e.data.indexFiles?.length > 0) {
+                if (userSession 
+                    && userSession.isUserSignedIn()
+                    && e.data.indexFiles 
+                    && e.data.indexFiles.length > 0) {
                     try {
                         if (await addIndexesToCache(e.data.indexFiles)) {
                             message = null;
@@ -626,8 +637,10 @@ self.addEventListener(
                 break;
             case "removecache":
                 message = 'Unable to delete cached index.';
-                if (userSession?.isUserSignedIn()
-                    && e.data.indexFile?.length > 0) {
+                if (userSession 
+                    && userSession.isUserSignedIn()
+                    && e.data.indexFile
+                    && e.data.indexFile.length > 0) {
                     try {
                         if (await removeCachedIndex(e.data.indexFile)) {
                             message = null;
@@ -652,8 +665,10 @@ self.addEventListener(
                 break;
             case "updatecache":
                 message = 'Unable to update cached index.';
-                if (userSession?.isUserSignedIn()
-                    && e.data.indexFile?.length > 0) {
+                if (userSession
+                    && userSession.isUserSignedIn()
+                    && e.data.indexFile
+                    && e.data.indexFile.length > 0) {
                     try {
                         if (await updateCachedIndex(e.data.indexFile)) {
                             message = null;
@@ -677,7 +692,9 @@ self.addEventListener(
                 }
                 break;
             case "deletedb":
-                db?.close();
+                if (db) {
+                    db.close();
+                }
                 await idb.deleteDB("gaideodb", {
                     blocked() {
                         console.log("Unable to delete cached indexes database because all connections could not be closed.")

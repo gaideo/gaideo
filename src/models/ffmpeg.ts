@@ -22,9 +22,8 @@ export interface FFMpegInput {
     inputType: FFMpegInputType;
     output?: string;
     dimensions?: FFMpegVideoDimension | null | undefined;
-    keyData?: ArrayBuffer;
-    keyInfoData?: ArrayBuffer;
     ffmpeg?: any;
+    element?: HTMLElement;
     isMusic?: boolean;
 }
 

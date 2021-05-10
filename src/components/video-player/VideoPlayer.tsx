@@ -7,7 +7,7 @@ import { VideoDescription } from './VideoDescription';
 import { getEncryptedFile } from '../../utilities/gaia-utils';
 import { getImageSize } from '../../utilities/image-utils';
 import { IDBPDatabase } from 'idb';
-import { getPlaylistEntries, loadBrowseEntry } from '../../utilities/media-utils';
+import { getPlaylistEntries, loadBrowseEntry, MusicType } from '../../utilities/media-utils';
 import { EditPlaylistEntry } from '../../models/edit-playlist-entry';
 import PlaylistDetail from '../playlists/PlaylistDetail';
 import { FormControlLabel, Typography, Switch } from '@material-ui/core';
@@ -132,6 +132,7 @@ export function VideoPlayer(props: VideoPlayerProps) {
 
   useEffect(() => {
 
+    const videoElem = videoRef?.current;
     const getPath = () => {
       let ret: string | null = null;
       const pathRegex = /\?path=([0-9a-zA-Z./]+)/g;
@@ -154,7 +155,9 @@ export function VideoPlayer(props: VideoPlayerProps) {
     };
 
     function process(playlist: any) {
-      return context.current.videoKey as ArrayBuffer;
+      let ret = context.current.videoKey as ArrayBuffer;
+      console.log(ret);
+      return ret;
     }
 
     const path = getPath();
@@ -261,23 +264,28 @@ export function VideoPlayer(props: VideoPlayerProps) {
             }
             else {
               const w: any = window;
-              const videoElem = videoRef.current;
+              let bufferBase64: string | null = null;
               if (videoKey) {
-                if (w.webkit && w.webkit.messageHandlers && w.webkit.messageHandlers.gaideoMessageHandler) {
-                  const buffer = Buffer.from(videoKey);
-                  w.webkit.messageHandlers.gaideoMessageHandler.postMessage(
-                    {
-                      "type": "set-key",
-                      "data": buffer.toString('base64'),
-                      "url": source
-                    }
-                  )
-                }
-                videoElem.src = "gaideo://gaideo.com/master.m3u8";
+                const buffer = Buffer.from(videoKey);
+                bufferBase64 = buffer.toString('base64');
+              }
+              if (w.webkit && w.webkit.messageHandlers && w.webkit.messageHandlers.gaideoMessageHandler) {
+                w.webkit.messageHandlers.gaideoMessageHandler.postMessage(
+                  {
+                    "type": "set-key",
+                    "data": bufferBase64,
+                    "url": source
+                  }
+                )
+              }
+              if (videoKey) {
+                videoRef.current.src = "gaideo://gaideo.com/master.m3u8";
               }
               else {
-                videoElem.src = source;
+                videoRef.current.src = source;
               }
+              videoRef.current.load();
+              videoRef.current.play();
             }
           }
         }
@@ -291,16 +299,21 @@ export function VideoPlayer(props: VideoPlayerProps) {
     return function cleanup() {
       if (hls) {
         hls.destroy();
-        if (!Hls.isSupported()) {
-          const w: any = window;
-          if (w.webkit && w.webkit.messageHandlers && w.webkit.messageHandlers.gaideoMessageHandler) {
-            w.webkit.messageHandlers.gaideoMessageHandler.postMessage(
-              {
-                "type": "set-key",
-                "data": null
-              }
-            )
-          }
+      }
+      else if (videoElem) {
+        videoElem.pause();
+        videoElem.removeAttribute('src'); // empty source
+        videoElem.load();
+      }
+      if (!Hls.isSupported()) {
+        const w: any = window;
+        if (w.webkit && w.webkit.messageHandlers && w.webkit.messageHandlers.gaideoMessageHandler) {
+          w.webkit.messageHandlers.gaideoMessageHandler.postMessage(
+            {
+              "type": "set-key",
+              "data": null
+            }
+          )
         }
       }
     }
@@ -388,18 +401,31 @@ export function VideoPlayer(props: VideoPlayerProps) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: props.isMobile ? 'column' : 'row' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', paddingLeft: props.isMobile ? type === MusicType ? 17 : 0 : 39, paddingTop: 10 }}>
       {Hls.isSupported() &&
-        <div style={{ flex: '1 1 auto', paddingTop: !isShowingPicker() ? 24 : 0, paddingLeft: props.isMobile ? 0 : 22 }}>
-          <video
-            ref={videoRef}
-            id="video"
-            width="100%"
-            style={{ border: 'none', maxWidth: width, maxHeight: height }}
-            controls
-            onEnded={() => playNext()}
-            onPlay={() => setPlaying()}
-            onPause={() => setPaused()}></video>
+        <div style={{ flex: '1 1 auto', paddingTop: !isShowingPicker() ? 24 : 0 }}>
+          {type === MusicType &&
+            <audio
+              ref={videoRef}
+              id="video"
+              controls
+              onEnded={() => playNext()}
+              onPlay={() => setPlaying()}
+              onPause={() => setPaused()}>
+            </audio>
+          }
+          {type !== MusicType &&
+            <video
+              ref={videoRef}
+              id="video"
+              width="100%"
+              style={{ border: 'none', maxWidth: width, maxHeight: height }}
+              controls
+              onEnded={() => playNext()}
+              onPlay={() => setPlaying()}
+              onPause={() => setPaused()}>
+            </video>
+          }
           {showDescription &&
             <div style={{ maxWidth: width, maxHeight: height }}>
               <VideoDescription
@@ -410,25 +436,41 @@ export function VideoPlayer(props: VideoPlayerProps) {
         </div>
       }
       {!Hls.isSupported() &&
-        <div style={{ paddingTop: !isShowingPicker() ? 24 : 0, paddingLeft: props.isMobile ? 0 : 22 }}>
-          <video
-            playsInline
-            muted
-            autoPlay
-            ref={videoRef}
-            id="video"
-            controls
-            onEnded={() => playNext()}></video>
+        <div style={{ paddingTop: !isShowingPicker() ? 24 : 0 }}>
+          {type === MusicType &&
+            <audio
+              ref={videoRef}
+              id="video"
+              controls
+              onEnded={() => playNext()}
+              onPlay={() => setPlaying()}
+              onPause={() => setPaused()}>
+
+            </audio>
+          }
+          {type !== MusicType &&
+            <video
+              ref={videoRef}
+              id="video"
+              width="100%"
+              style={{ border: 'none', maxWidth: width, maxHeight: height }}
+              controls
+              onEnded={() => playNext()}
+              onPlay={() => setPlaying()}
+              onPause={() => setPaused()}>
+
+            </video>
+          }
           {showDescription &&
             <div style={{ maxWidth: width, maxHeight: height }}>
-              <VideoDescription playlistId={playlistId}/>
+              <VideoDescription playlistId={playlistId} />
             </div>
           }
         </div>}
       {playlistId &&
         <div style={{ paddingTop: props.isMobile || isShowingPicker() ? 0 : 22 }}>
-          <div style={{ height: '100%', marginTop: props.isMobile ? 0 : 0, marginLeft: 10, paddingLeft: 10, paddingRight: 10, marginRight: 10, maxWidth: 350 }}>
-            <div style={{paddingTop: 5}}>
+          <div style={{ height: '100%', maxWidth: 350, marginRight: 10, marginTop: 0, marginLeft: type === MusicType ? 0 : 10 }}>
+            <div style={{ paddingTop: 5 }}>
               <Typography variant="body1">{playlistTitle}</Typography>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
@@ -446,7 +488,7 @@ export function VideoPlayer(props: VideoPlayerProps) {
                 />
               </div>
               <div style={{ whiteSpace: 'nowrap' }}>
-              <FormControlLabel style={{ marginRight: 0 }}
+                <FormControlLabel style={{ marginRight: 0 }}
                   disabled={!autoPlay}
                   control={
                     <Switch

@@ -61,12 +61,6 @@ export async function runFFMpegWasm(ffmpeg: any, input: FFMpegInput, args: strin
     clearFFMpegFileSystem(ffmpeg);
 
     ffmpeg.FS("writeFile", [input.file.name, new Uint8Array(inputData)]);
-    if (input.keyInfoData) {
-        ffmpeg.FS("writeFile", ["key.info", input.keyInfoData]);
-    }
-    if (input.keyData) {
-        ffmpeg.FS("writeFile", ["key.bin", input.keyData]);
-    }
     await ffmpeg.run(args.join(' '));
 
     if (input.inputType !== FFMpegInputType.GetDimensions) {
@@ -91,6 +85,87 @@ export async function runFFMpegWasm(ffmpeg: any, input: FFMpegInput, args: strin
     return result;
 }
 
+function base64ToArrayBuffer(base64: string) {
+    var binary_string = window.atob(base64);
+    var len = binary_string.length;
+    var bytes = new Uint8Array(len);
+    for (var i = 0; i < len; i++) {
+        bytes[i] = binary_string.charCodeAt(i);
+    }
+    return bytes.buffer;
+}
+
+export async function runFFMpegNative(
+    input: FFMpegInput,
+    args: string[],
+    logCallback: FFMPegLogCallback
+) {
+    let result: any = null;
+    let foundFile = false;
+    const w: any = input.element?.ownerDocument?.defaultView;
+    const gaideoMessageHandler = w?.webkit?.messageHandlers?.gaideoMessageHandler;
+    if (gaideoMessageHandler && input.element?.id) {
+        try {
+            if (input.isMusic || input.inputType === FFMpegInputType.GetDimensions) {
+                const buffer = Buffer.from(input.fileData);
+                gaideoMessageHandler.postMessage({
+                    "type": "ffmpeg-initialize",
+                    "inputData": buffer.toString("base64"),
+                    "inputName": input.file.name,
+                    "callbackid": input.element.id
+                });
+            }
+            const memfs: any[] = [];
+            const e: any = input.element;
+            e.ffmpegDone = false;
+            e.ffmpegCallback = (type: string, data: string, name?: string) => {
+                if (type === "done") {
+                    e.ffmpegDone = true;
+                    if (foundFile) {
+                        result = { MEMFS: memfs };
+                    }
+                }
+                else if (type === "log") {
+                    console.log(data);
+                    logCallback({ message: data});
+                }
+                else if (type === "file" && name) {
+                    foundFile = true;
+                    const buff = base64ToArrayBuffer(data);
+                    memfs.push({
+                        name: name,
+                        data: buff
+                    });
+                }
+            }
+
+            gaideoMessageHandler.postMessage({
+                "type": "ffmpeg-run",
+                "args": args.join(' '),
+                "inputName": input.file.name,
+                "callbackid": input.element.id
+            });
+            while (!e.ffmpegDone) {
+                await sleep(1000);
+            }
+        }
+        catch (error) {
+            console.log(error);
+        }
+        finally {
+            if (input.inputType === FFMpegInputType.Hls) {
+                gaideoMessageHandler.postMessage({
+                    "type": "ffmpeg-cleanup",
+                    "inputName": input.file.name,
+                    "callbackid": input.element.id
+                });
+            }
+
+        }
+    }
+    return result;
+}
+
 export async function runFFMpegWorker(
     input: FFMpegInput,
     args: string[],
@@ -106,12 +181,6 @@ export async function runFFMpegWorker(
         let memfs = [
             { name: input.file.name, data: inputData }
         ];
-        if (input.keyInfoData) {
-            memfs.push({ name: 'key.info', data: input.keyInfoData });
-        }
-        if (input.keyData) {
-            memfs.push({ name: 'key.bin', data: input.keyData });
-        }
         switch (msg.type) {
             case "ready":
                 worker.postMessage({
@@ -231,7 +300,12 @@ export async function runFFMeg(input: FFMpegInput, handleLogMessage: FFMPegLogCa
 
     let args = getArgsFromInput(input);
     if (args.length > 0) {
-        if (input.ffmpeg) {
+        const w: any = input.element?.ownerDocument?.defaultView;
+        let gaideoMessageHandler: any = w?.webkit?.messageHandlers?.gaideoMessageHandler
+        if (gaideoMessageHandler) {
+            result.result = await runFFMpegNative(input, args, handleLogMessage);
+        }
+        else if (input.ffmpeg) {
             result.result = await runFFMpegWasm(input.ffmpeg, input, args, input.fileData);
 
         }
@@ -307,9 +381,9 @@ const computePreviewFileName = (videoFileName: string) => {
 export async function convertVideoToHls(
     inputMetaData: MediaMetaData,
     file: any,
-    isMobile: boolean,
     encrypt: boolean,
-    updateProgress: UpdateProgressCallback): Promise<FFMpegEncryptResult> {
+    updateProgress: UpdateProgressCallback,
+    element?: HTMLElement): Promise<FFMpegEncryptResult> {
     let metaData: MediaMetaData = { ...inputMetaData, previewImageName: undefined };
     let hlsFiles: FFMpegFile[] = [];
 
@@ -369,24 +443,24 @@ export async function convertVideoToHls(
     }
 
     let ffmpeg: any;
-    const canRun = await canRunWebAssembly();
-    if (canRun) {
-        ffmpeg = createFFmpeg({
-            corePath: "/scripts/workers/ffmpeg-core.js",
-            log: true,
-            logger: handleLogMessage
-        });
-        await ffmpeg.load();
+    const w: any = element?.ownerDocument?.defaultView;
+    if (!(w?.webkit?.messageHandlers?.gaideoMessageHandler)) {
+        const canRun = await canRunWebAssembly();
+        if (canRun) {
+            ffmpeg = createFFmpeg({
+                corePath: "/scripts/workers/ffmpeg-core.js",
+                log: true,
+                logger: handleLogMessage
+            });
+            await ffmpeg.load();
+        }
     }
 
     if (inputMetaData.previewImageName) {
         let keyData = getEntropy(32);
         let ivData = getEntropy(16);
         let ivHexData = ivData.toString('hex');
-        let keyInfo = `key.bin\nkey.bin\n${ivHexData}\n`;
         let dimensions: FFMpegVideoDimension | null | undefined;
-        var enc = new TextEncoder();
-        let keyInfoData = new Uint8Array(enc.encode(keyInfo));
         let data = await readBinaryFile(file);
         let result: any = null;
         if (isMusic) {
@@ -401,7 +475,8 @@ export async function convertVideoToHls(
                 file: file,
                 fileData: data,
                 inputType: FFMpegInputType.GetDimensions,
-                ffmpeg: ffmpeg
+                ffmpeg: ffmpeg,
+                element: element
             }, handleLogMessage);
             gettingDimensions = false;
         }
@@ -445,7 +520,8 @@ export async function convertVideoToHls(
                     inputType: FFMpegInputType.PreviewImage,
                     output: computePreviewFileName(inputMetaData.previewImageName),
                     dimensions: dimensions,
-                    ffmpeg: ffmpeg
+                    ffmpeg: ffmpeg,
+                    element: element
                 }, handleLogMessage);
             }
             let memfs = result.result?.MEMFS;
@@ -474,9 +550,8 @@ export async function convertVideoToHls(
                     inputType: FFMpegInputType.Hls,
                     output: `video${dimensions.height}-stream.m3u8`,
                     dimensions: dimensions,
-                    keyData: keyData,
-                    keyInfoData: keyInfoData,
                     ffmpeg: ffmpeg,
+                    element: element,
                     isMusic: isMusic
                 }, handleLogMessage);
                 encoding = false;

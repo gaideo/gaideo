@@ -29,8 +29,8 @@ export function BrowseVideoMenu(props: BrowseVideosProps) {
                 if (browseEntry.metaData.isPublic) {
                     actions = [
                         { icon: <ScreenShareIcon />, name: 'Share' },
-                        { icon: <StopScreenShareIcon />, name: 'Edit' },
-                        { icon: <AddIcon />, name: 'Add' }
+                        { icon: <EditIcon />, name: 'Edit' },
+                        { icon: <DeleteIcon />, name: 'Delete' }
                     ];
                 }
                 else {

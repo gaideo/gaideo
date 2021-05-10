@@ -1,4 +1,4 @@
-import React, { Fragment, useState, useEffect } from 'react';
+import React, { Fragment, useState, useEffect, useRef } from 'react';
 import "./PublishMedia.css";
 import { makeStyles, Theme, createStyles } from '@material-ui/core/styles';
 import Stepper from '@material-ui/core/Stepper';
@@ -42,6 +42,7 @@ const useStyles = makeStyles((theme: Theme) =>
 
 interface PublishVideoProps {
     worker: Worker | null;
+    nativeFFMpegWorker?: Worker | null;
     videos: BrowseEntry[] | null;
     photos: Photo[] | null;
     songs: BrowseEntry[] | null;
@@ -70,6 +71,7 @@ export default function PublishVideo(props: PublishVideoProps) {
     const [keywordsErrorMessage, setKeywordsErrorMessage] = React.useState(keywordsMessage);
     const [uploadFilesError, setUploadFilesError] = React.useState(false);
     const [uploadFilesErrorMessage, setUploadFilesErrorMessage] = React.useState('');
+    const uploadButtonRef = useRef<HTMLButtonElement>(null);
 
     const { authOptions } = useConnect();
     const { userSession } = authOptions;
@@ -132,6 +134,7 @@ export default function PublishVideo(props: PublishVideoProps) {
                         <FormControlLabel
                             control={
                                 <Checkbox
+                                    disabled={id ? true : false}
                                     checked={isPublic}
                                     onChange={(event: React.ChangeEvent<HTMLInputElement>) => { handleIsPublicChange(event); }}
                                     name={`checkIsPublic`}
@@ -587,7 +590,7 @@ export default function PublishVideo(props: PublishVideoProps) {
                 deleteVideoEntry(metaData, userSession, null, props.updateProgressCallback);
             }
             else {
-                await updateMasterIndex(userSession, props.worker, FileOperation.Add, [{ 
+                await updateMasterIndex(userSession, props.worker, FileOperation.Add, [{
                     id: metaData.id,
                     type: metaData.type,
                     isPublic: metaData.isPublic,
@@ -605,7 +608,12 @@ export default function PublishVideo(props: PublishVideoProps) {
             setUploading(true);
             try {
                 if (metaData.type === UnencryptedVideosType) {
-                    let encodeResult = await convertVideoToHls(metaData, files[0], props.isMobile, !isPublic, props.updateProgressCallback);
+                    console.log(files[0].name);
+                    let element: HTMLElement | undefined = undefined;
+                    if (uploadButtonRef?.current) {
+                        element = uploadButtonRef.current;
+                    }
+                    let encodeResult = await convertVideoToHls(metaData, files[0], !isPublic, props.updateProgressCallback, element);
                     if (encodeResult.metaData && encodeResult.hlsFiles) {
                         await saveVideoFiles(userSession, encodeResult.metaData, encodeResult.hlsFiles);
                     }
@@ -652,84 +660,85 @@ export default function PublishVideo(props: PublishVideoProps) {
             let result = await loadBrowseEntry(userSession, indexFile, false);
             let be = result as BrowseEntry;
             if (be) {
+                let kwds: string[] | null = null;
+                if (keywords?.length > 0) {
+                    kwds = keywords.split(/\s+/g).filter(x => x.trim().length !== 0);
+                }
+                let nowUTC: Date = getNow();
+                be.metaData.title = title;
+                be.metaData.description = description;
+                be.metaData.keywords = kwds;
+                be.metaData.lastUpdatedUTC = nowUTC;
+                let data = JSON.stringify(be.metaData);
                 let privateKey = await getPrivateKey('', userSession, be.metaData.id, be.metaData.type);
                 if (privateKey) {
-                    let kwds: string[] | null = null;
-                    if (keywords?.length > 0) {
-                        kwds = keywords.split(/\s+/g).filter(x => x.trim().length !== 0);
-                    }
-                    let nowUTC: Date = getNow();
-                    be.metaData.title = title;
-                    be.metaData.description = description;
-                    be.metaData.keywords = kwds;
-                    be.metaData.lastUpdatedUTC = nowUTC;
-
                     let publicKey = getPublicKeyFromPrivate(privateKey);
-                    let encryptedData = await userSession.encryptContent(JSON.stringify(be.metaData), {
+                    data = await userSession.encryptContent(data, {
                         publicKey: publicKey
                     });
-                    await userSession.putFile(indexFile, encryptedData, {
-                        encrypt: false,
-                        wasString: true,
-                        contentType: 'application/json'
-                    })
+                }
 
-                    updateMasterIndex(userSession, props.worker, FileOperation.Update, [{ 
-                        id: be.metaData.id,
-                        type: be.metaData.type,
-                        isPublic: be.metaData.isPublic,
-                        lastUpdatedUTC: be.metaData.lastUpdatedUTC
-                    }]);
-                    if (type === ImagesType) {
-                        if (props.photos) {
-                            for (let i = 0; i < props.photos?.length; i++) {
-                                let photo = props.photos[i];
-                                if (photo.browseEntry.metaData.id === be.metaData.id) {
-                                    let newPhoto = { ...photo };
-                                    newPhoto.browseEntry.metaData = { ...be.metaData };
-                                    newPhoto.browseEntry.age = computeAge(be.metaData.lastUpdatedUTC);
-                                    let newPhotos = props.photos.slice();
-                                    newPhotos.splice(i, 1);
-                                    newPhotos.unshift(newPhoto);
-                                    props.imagesLoadedCallback(newPhotos);
-                                    break;
-                                }
+                await userSession.putFile(indexFile, data, {
+                    encrypt: false,
+                    wasString: true,
+                    contentType: 'application/json'
+                })
+
+                updateMasterIndex(userSession, props.worker, FileOperation.Update, [{
+                    id: be.metaData.id,
+                    type: be.metaData.type,
+                    isPublic: be.metaData.isPublic,
+                    lastUpdatedUTC: be.metaData.lastUpdatedUTC
+                }]);
+                if (type === ImagesType) {
+                    if (props.photos) {
+                        for (let i = 0; i < props.photos?.length; i++) {
+                            let photo = props.photos[i];
+                            if (photo.browseEntry.metaData.id === be.metaData.id) {
+                                let newPhoto = { ...photo };
+                                newPhoto.browseEntry.metaData = { ...be.metaData };
+                                newPhoto.browseEntry.age = computeAge(be.metaData.lastUpdatedUTC);
+                                let newPhotos = props.photos.slice();
+                                newPhotos.splice(i, 1);
+                                newPhotos.unshift(newPhoto);
+                                props.imagesLoadedCallback(newPhotos);
+                                break;
                             }
                         }
-                        history.push('/images/browse');
                     }
-                    else if (type === MusicType) {
-                        if (props.songs) {
-                            for (let i = 0; i < props.songs?.length; i++) {
-                                let video = props.songs[i];
-                                if (video.metaData.id === be.metaData.id) {
-                                    let newVideo = { ...video, metaData: be.metaData };
-                                    newVideo.age = computeAge(be.metaData.lastUpdatedUTC);
-                                    let newSongs = props.songs.slice();
-                                    newSongs.splice(i, 1);
-                                    newSongs.unshift(newVideo);
-                                    props.songsLoadedCallback(newSongs);
-                                }
+                    history.push('/images/browse');
+                }
+                else if (type === MusicType) {
+                    if (props.songs) {
+                        for (let i = 0; i < props.songs?.length; i++) {
+                            let video = props.songs[i];
+                            if (video.metaData.id === be.metaData.id) {
+                                let newVideo = { ...video, metaData: be.metaData };
+                                newVideo.age = computeAge(be.metaData.lastUpdatedUTC);
+                                let newSongs = props.songs.slice();
+                                newSongs.splice(i, 1);
+                                newSongs.unshift(newVideo);
+                                props.songsLoadedCallback(newSongs);
                             }
                         }
-                        history.push('/music/browse');
                     }
-                    else {
-                        if (props.videos) {
-                            for (let i = 0; i < props.videos?.length; i++) {
-                                let video = props.videos[i];
-                                if (video.metaData.id === be.metaData.id) {
-                                    let newVideo = { ...video, metaData: be.metaData };
-                                    newVideo.age = computeAge(be.metaData.lastUpdatedUTC);
-                                    let newVideos = props.videos.slice();
-                                    newVideos.splice(i, 1);
-                                    newVideos.unshift(newVideo);
-                                    props.videosLoadedCallback(newVideos);
-                                }
+                    history.push('/music/browse');
+                }
+                else {
+                    if (props.videos) {
+                        for (let i = 0; i < props.videos?.length; i++) {
+                            let video = props.videos[i];
+                            if (video.metaData.id === be.metaData.id) {
+                                let newVideo = { ...video, metaData: be.metaData };
+                                newVideo.age = computeAge(be.metaData.lastUpdatedUTC);
+                                let newVideos = props.videos.slice();
+                                newVideos.splice(i, 1);
+                                newVideos.unshift(newVideo);
+                                props.videosLoadedCallback(newVideos);
                             }
                         }
-                        history.push('/videos/browse');
                     }
+                    history.push('/videos/browse');
                 }
             }
         }
@@ -787,11 +796,20 @@ export default function PublishVideo(props: PublishVideoProps) {
                     foundExisting = true;
                     setTitle(be.metaData.title);
                     setDescription(be.metaData.description);
+                    if (be.metaData.isPublic) {
+                        setIsPublic(true);
+                    }
                     if (be.metaData && be.metaData.keywords && be.metaData.keywords.length > 0) {
                         setKeywords(be.metaData.keywords.join(' '));
                     }
                     setSteps(['Enter search info']);
                 }
+            }
+            else {
+                setTitle('');
+                setDescription('');
+                setKeywords('');
+                setIsPublic(false);
             }
             if (!foundExisting) {
                 setSteps(['Enter search info', 'Upload files']);
@@ -830,6 +848,8 @@ export default function PublishVideo(props: PublishVideoProps) {
                                     Back
                                 </Button>
                                 <Button
+                                    id="upload-btn"
+                                    ref={uploadButtonRef}
                                     variant="contained"
                                     color="primary"
                                     onClick={handleNext}
