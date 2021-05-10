@@ -166,9 +166,9 @@ export function Playlists(props: PlaylistsProps) {
     }, [userSession, updatePlaylistCallback]);
 
     const filterPlaylists = async (inputValue: string) => {
+        let options: any[] = [];
         if (userSession?.isUserSignedIn()) {
             let playlists: any = await getGroups(userSession);
-            let options: any[] = [];
             for (let key in playlists) {
                 let entry = playlists[key];
                 if (!inputValue || (inputValue.length > 0 && entry.name.startsWith(inputValue))) {
@@ -207,13 +207,9 @@ export function Playlists(props: PlaylistsProps) {
                     return 0;
                 }
             })
-            return options;
         }
+        return options;
     }
-    const promiseOptions = (inputValue: string) =>
-        new Promise(resolve => {
-            resolve(filterPlaylists(inputValue));
-        });
 
     const animatedComponents = makeAnimated();
 
@@ -328,7 +324,7 @@ export function Playlists(props: PlaylistsProps) {
                                 cacheOptions
                                 defaultOptions
                                 isClearable={true}
-                                loadOptions={promiseOptions}
+                                loadOptions={filterPlaylists}
                                 components={animatedComponents}
                                 onChange={(newValue, actionMeta) => { handleChanged(newValue) }} />
                         </div>

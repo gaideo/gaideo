@@ -131,10 +131,6 @@ export function Friends(props: FriendsProps) {
         })
         return options;
     }
-    const promiseOptions = (inputValue: string) =>
-        new Promise(resolve => {
-            resolve(filterFriends(inputValue));
-        });
 
     const animatedComponents = makeAnimated();
 
@@ -195,7 +191,8 @@ export function Friends(props: FriendsProps) {
                                 closeMenuOnSelect={false}
                                 cacheOptions
                                 defaultOptions
-                                loadOptions={promiseOptions}
+                                
+                                loadOptions={filterFriends}
                                 components={animatedComponents}
                                 isMulti
                                 onChange={(newValue, actionMeta) => { setSelectedFriends(newValue); props.saveSelectedFriendsCallback(newValue); }} />

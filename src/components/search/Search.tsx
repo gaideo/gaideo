@@ -198,11 +198,6 @@ export function Search(props: SearchProps) {
         return filteredOptions;
     }
 
-    const promiseOptions = (inputValue: string) =>
-        new Promise(resolve => {
-            resolve(filter(inputValue));
-        });
-
     const animatedComponents = makeAnimated();
 
     const handleClose = () => {
@@ -248,7 +243,7 @@ export function Search(props: SearchProps) {
                                 placeholder="Enter search keywords..."
                                 cacheOptions
                                 defaultOptions
-                                loadOptions={promiseOptions}
+                                loadOptions={filter}
                                 components={animatedComponents}
                                 onInputChange={(newValue, actionMeta) => handleInputChanged(newValue)}
                                 onChange={(newValue, actionMeta) => { handleChanged(newValue) }} />

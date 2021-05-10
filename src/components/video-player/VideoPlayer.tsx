@@ -176,7 +176,7 @@ export function VideoPlayer(props: VideoPlayerProps) {
               onSuccess({
                 data: process(null),
                 url: `${document.location.origin}/key.bin`,
-              }, stats, context);
+              }, stats, context, null);
             }
             else {
               load(context, config, callbacks);

@@ -606,17 +606,6 @@ export default function Main(props: MainProps) {
                         </Drawer>
                     }
                     <div style={{ display: 'flex', flexDirection: 'row', paddingLeft: userSession?.isUserSignedIn() ? 180 : 0 }}>
-                        <div style={{ paddingTop: 3 }}>
-                            <Icon>
-                                {isVideos ? <MovieIcon />
-                                    : isImages ? <CameraEnhanceOutlinedIcon />
-                                        : isMusic ? <MusicNoteIcon />
-                                            : isPublish ? <PublishIcon />
-                                                : isEncrypt ? <EncryptIcon />
-                                                    : isContactUs ? <ContactIcon />
-                                                        : <div></div>}
-                            </Icon>
-                        </div>
                         <div style={{ marginBottom: 0, paddingLeft: 5 }}>
                             <div>
                                 <img alt="Gaideo" style={{ paddingTop: 3 }} src="gaideo.png" width="112" height="30" />
