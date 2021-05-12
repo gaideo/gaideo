@@ -24,7 +24,7 @@
     "@types/react-swipeable-views": "^0.13.0",
     "blockstack": "^21.1.1",
     "fontsource-roboto": "^3.1.5",
-    "hls.js": "^1.0.3",
+    "hls.js": "^0.14.13",
     "idb": "^6.0.0",
     "install": "^0.13.0",
     "js-search": "^2.0.0",
@@ -64,6 +64,6 @@
     ]
   },
   "devDependencies": {
-    "@types/hls.js": "^0.13.3"
+    "@types/hls.js": "^0.13.1"
   }
 }

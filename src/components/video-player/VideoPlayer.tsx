@@ -156,7 +156,6 @@ export function VideoPlayer(props: VideoPlayerProps) {
 
     function process(playlist: any) {
       let ret = context.current.videoKey as ArrayBuffer;
-      console.log(ret);
       return ret;
     }
 
@@ -176,7 +175,7 @@ export function VideoPlayer(props: VideoPlayerProps) {
               onSuccess({
                 data: process(null),
                 url: `${document.location.origin}/key.bin`,
-              }, stats, context, null);
+              }, stats, context);
             }
             else {
               load(context, config, callbacks);
