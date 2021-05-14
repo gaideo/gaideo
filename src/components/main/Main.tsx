@@ -99,6 +99,7 @@ export default function Main(props: MainProps) {
         backdrop: {
             zIndex: theme.zIndex.drawer + 1,
             color: '#fff',
+            paddingRight: 20
         },
         buttonroot: {
             marginTop: 0
@@ -529,6 +530,7 @@ export default function Main(props: MainProps) {
                             border: progressMessage && progressMessage?.length > 0 ? '1px solid' : undefined,
                             borderColor: 'white',
                             maxWidth: 800,
+                            width: '80%',
                             wordWrap: 'break-word'
                         }}>
 
@@ -552,7 +554,6 @@ export default function Main(props: MainProps) {
                     }
                 </Backdrop>
             }
-
             <Toolbar disableGutters={true} style={{ whiteSpace: 'nowrap', alignContent: 'center', justifyContent: 'space-between', height: 40, minHeight: 40 }}>
                 <Hidden mdUp implementation="css" >
                     <div style={{ display: 'flex', flexDirection: 'row' }}>
@@ -577,7 +578,7 @@ export default function Main(props: MainProps) {
                             </IconButton>
                         </div>
                         <div>
-                            <img alt="Gaideo" style={{ marginTop: 5 }} src="gaideo.png" width="112" height="30" />
+                            <img alt="Gaideo" style={{ marginTop: 5 }} src="gaideo.png" width="166" height="30" />
                         </div>
                         {userSession?.isUserSignedIn() &&
                             <Drawer
@@ -608,7 +609,7 @@ export default function Main(props: MainProps) {
                     <div style={{ display: 'flex', flexDirection: 'row', paddingLeft: userSession?.isUserSignedIn() ? 180 : 0 }}>
                         <div style={{ marginBottom: 0, paddingLeft: 5 }}>
                             <div>
-                                <img alt="Gaideo" style={{ paddingTop: 3 }} src="gaideo.png" width="112" height="30" />
+                                <img alt="Gaideo" style={{ paddingTop: 3 }} src="gaideo.png" width="166" height="30" />
                             </div>
                         </div>
                     </div>
