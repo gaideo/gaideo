@@ -578,7 +578,7 @@ export default function Main(props: MainProps) {
                             </IconButton>
                         </div>
                         <div>
-                            <img alt="Gaideo" style={{ marginTop: 5 }} src="gaideo.png" width="166" height="30" />
+                            <img alt="Gaideo" style={{ marginTop: 2 }} src="gaideo.png" width="166" height="30" />
                         </div>
                         {userSession?.isUserSignedIn() &&
                             <Drawer
@@ -609,7 +609,7 @@ export default function Main(props: MainProps) {
                     <div style={{ display: 'flex', flexDirection: 'row', paddingLeft: userSession?.isUserSignedIn() ? 180 : 0 }}>
                         <div style={{ marginBottom: 0, paddingLeft: 5 }}>
                             <div>
-                                <img alt="Gaideo" style={{ paddingTop: 3 }} src="gaideo.png" width="166" height="30" />
+                                <img alt="Gaideo" style={{ paddingTop: 2 }} src="gaideo.png" width="166" height="30" />
                             </div>
                         </div>
                     </div>
